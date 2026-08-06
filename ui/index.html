@@ -207,7 +207,8 @@
                      "detection-response","governance","model-security"];
   const active = new Set();
   const activeSubs = new Set();
-  let minImp = 1, query = "", activeLens = null, sortMode = "newest";
+  const activeLenses = new Set();   // multi-select; AND = cross-cutting stories
+  let minImp = 1, query = "", sortMode = "newest";
   const served = location.protocol === "http:" || location.protocol === "https:";
 
   const esc = s => (s || "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -399,23 +400,29 @@
     }
   }
 
+  const lensList = () => [...activeLenses];
+  const relScore = i => lensList().reduce((s, k) => s + (i[LENSES[k].score] || 0), 0);
+  const byRel = (a, b) => (relScore(b) - relScore(a)) || (b.importance - a.importance);
+
   function cardHTML(i) {
-    const L = activeLens ? LENSES[activeLens] : null;
-    const badge = L ? `<span class="pebadge">${L.label.split(" ")[0]} ${i[L.score] || 0}/3</span>` : "";
-    const angle = (L && i[L.angle])
-      ? `<div class="peangle"><b>${L.note}:</b> ${esc(i[L.angle])}</div>`
+    const ls = lensList();
+    const badges = ls.map(k =>
+      `<span class="pebadge">${LENSES[k].label.split(" ")[0]} ${i[LENSES[k].score] || 0}/3</span>`).join(" ");
+    const angles = ls.length
+      ? ls.map(k => i[LENSES[k].angle]
+          ? `<div class="peangle"><b>${LENSES[k].note}:</b> ${esc(i[LENSES[k].angle])}</div>` : "").join("")
       : `<div class="angle">${esc(i.privacy_angle)}</div>`;
     const subs = (i.subtopics || []).map(s => `<span class="subtag">${s}</span>`).join(" ");
     return `<article class="card">
       <h3><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.title)}</a></h3>
       <div class="meta">
         <span class="imp">${"●".repeat(i.importance)}${"○".repeat(5 - i.importance)}</span>
-        ${badge}
+        ${badges}
         <span>${esc(i.source)}</span><span>${esc(i.published || "date unknown")}</span>
         ${i.tags.map(t => `<span class="tag">${t}</span>`).join("")}
       </div>
       <div>${esc(i.summary)}</div>
-      ${angle}
+      ${angles}
       ${subs ? `<div class="meta" style="margin-top:8px">${subs}</div>` : ""}
     </article>`;
   }
@@ -424,14 +431,14 @@
     return i.importance >= minImp &&
       (!active.size || i.tags.some(t => active.has(t))) &&
       (!activeSubs.size || (i.subtopics || []).some(t => activeSubs.has(t))) &&
-      (!activeLens || (i[LENSES[activeLens].score] || 0) >= 2) &&
+      lensList().every(k => (i[LENSES[k].score] || 0) >= 2) &&
       (!query || (i.title + i.summary + i.source + (i.pe_angle || "") +
                   (i.sec_angle || "") + (i.law_angle || "")).toLowerCase().includes(query));
   }
 
   function render() {
     const items = D.items.filter(passes);
-    const sc = activeLens ? LENSES[activeLens].score : null;
+    const anyLens = activeLenses.size > 0;
     const stats = document.getElementById("stats");
     const listEl = document.getElementById("list");
 
@@ -439,8 +446,8 @@
       const wanted = activeSubs.size ? SUBTOPICS.filter(s => activeSubs.has(s)) : SUBTOPICS;
       const groups = wanted.map(s => ({
         s,
-        rows: items.filter(i => (i.subtopics || []).includes(s)).sort((a, b) =>
-          sc ? (b[sc] - a[sc]) || (b.importance - a.importance) : b.importance - a.importance),
+        rows: items.filter(i => (i.subtopics || []).includes(s))
+                   .sort(anyLens ? byRel : (a, b) => b.importance - a.importance),
       })).filter(g => g.rows.length);
       stats.textContent = `${items.length} stories across ${groups.length} subtopics`;
       listEl.innerHTML = groups.length
@@ -450,14 +457,15 @@
       return;
     }
 
-    if (sc) items.sort((a, b) => (b[sc] - a[sc]) || (b.importance - a.importance));
+    if (anyLens) items.sort(byRel);
     else if (sortMode === "importance") items.sort((a, b) => b.importance - a.importance);
 
-    stats.textContent = activeLens
-      ? `${items.length} ${LENSES[activeLens].name} stories`
+    const cross = lensList().map(k => LENSES[k].name).join(" + ");
+    stats.textContent = anyLens
+      ? `${items.length} ${cross} stories${activeLenses.size > 1 ? " (cross-cutting)" : ""}`
       : `${items.length} of ${D.items.length} stories`;
     listEl.innerHTML = items.length ? items.map(cardHTML).join("")
-      : '<div class="empty">No stories match. Run a scan or loosen filters.</div>';
+      : `<div class="empty">No stories${activeLenses.size > 1 ? " at this cross-section" : ""}. Drop a lens or loosen filters.</div>`;
   }
 
   let refreshDigest = () => {};
@@ -468,10 +476,10 @@
   Object.entries(LENSES).forEach(([key, L]) => {
     const b = document.createElement("button");
     b.className = "lensbtn"; b.textContent = L.label;
-    b.title = `Show only ${L.name} stories, ranked by relevance`;
+    b.title = `${L.name} stories, ranked by relevance. Select more than one lens to see cross-cutting stories.`;
     b.onclick = () => {
-      activeLens = activeLens === key ? null : key;
-      Object.entries(lensButtons).forEach(([k, btn]) => btn.classList.toggle("on", k === activeLens));
+      activeLenses.has(key) ? activeLenses.delete(key) : activeLenses.add(key);
+      b.classList.toggle("on");
       render(); refreshDigest();
     };
     lensButtons[key] = b; lensGroup.appendChild(b);
@@ -514,7 +522,7 @@
     refreshDigest = () => {
       const d = D.digests[pick.value || 0];
       // When the lens is on and this day has a privacy-eng variant, show it.
-      const src = (activeLens === "pe" && d.pe_markdown) ? d.pe_markdown : d.markdown;
+      const src = (activeLenses.has("pe") && d.pe_markdown) ? d.pe_markdown : d.markdown;
       document.getElementById("digest").innerHTML = md(src);
     };
     pick.onchange = refreshDigest;
