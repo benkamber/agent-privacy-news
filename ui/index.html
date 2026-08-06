@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Agent Privacy News</title>
+<title>Agent Privacy &amp; Security News</title>
 <style>
   :root {
     --bg: #f7f7f5; --panel: #ffffff; --ink: #1a1a1a; --muted: #6b6b66;
@@ -85,10 +85,22 @@
     border-radius: 999px; padding: 4px 13px; font-size: 13px; font-weight: 600; cursor: pointer;
   }
   .lensbtn.on { background: var(--accent); color: var(--accent-ink); }
+  .lensgroup { display: inline-flex; gap: 6px; }
+  .sortlbl { font-size: 13px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+  .sortlbl select { border: 1px solid var(--line); background: var(--chip); color: var(--ink);
+                    border-radius: 6px; padding: 3px 6px; font-size: 13px; }
+  .subrow { gap: 6px; }
+  .sublabel { font-size: 12.5px; color: var(--muted); align-self: center; margin-right: 2px; }
+  .chip.sub { font-size: 12px; padding: 3px 10px; }
   .pebadge { color: var(--accent); font-weight: 700; }
   .peangle { margin-top: 8px; padding: 7px 11px; border-radius: 8px;
              background: var(--chip); font-size: 13px; }
   .peangle b { color: var(--accent); }
+  .subtag { border: 1px solid var(--line); border-radius: 4px; padding: 0 6px;
+            font-size: 11px; color: var(--muted); }
+  .grouphead { font-size: 13px; font-weight: 600; color: var(--accent);
+               margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+  .grouphead:first-child { margin-top: 0; }
   input[type=search] {
     border: 1px solid var(--line); background: var(--panel); color: var(--ink);
     border-radius: 8px; padding: 6px 10px; font-size: 14px; min-width: 200px;
@@ -132,7 +144,7 @@
 </head>
 <body>
 <header>
-  <h1>🕵️ Agent Privacy News</h1>
+  <h1>🕵️ Agent Privacy &amp; Security News</h1>
   <span class="sub" id="stats"></span>
   <div class="tools">
     <span class="freshness" id="freshness"><span class="dot"></span><span>—</span></span>
@@ -145,10 +157,18 @@
 <main>
   <section>
     <div class="controls" id="controls">
-      <button class="lensbtn" id="lensBtn"
-        title="Show only stories relevant to building privacy capabilities for agentic AI, ranked by relevance">🔒 Privacy-eng lens</button>
+      <span class="lensgroup" id="lensGroup"></span>
       <input type="search" id="q" placeholder="Search…">
+      <label class="sortlbl">Sort
+        <select id="sortSel">
+          <option value="newest">newest</option>
+          <option value="importance">importance</option>
+          <option value="subtopic">subtopic</option>
+        </select>
+      </label>
     </div>
+    <div class="controls" id="tagControls"></div>
+    <div class="controls subrow" id="subControls"></div>
     <div id="list"></div>
   </section>
   <aside>
@@ -177,8 +197,17 @@
 (function () {
   const D = window.NEWS_DATA || { items: [], digests: [], generated: null };
   const TAGS = ["tools","mcp","a2a","polycloud","regulation","incident","research","product"];
+  const LENSES = {
+    pe:  { label: "🔒 Privacy",  name: "privacy",  score: "pe_score",  angle: "pe_angle",  note: "For privacy engineers" },
+    sec: { label: "🛡 Security", name: "security", score: "sec_score", angle: "sec_angle", note: "For security teams" },
+    law: { label: "⚖ Law",      name: "law",      score: "law_score", angle: "law_angle", note: "Legal angle" },
+  };
+  const SUBTOPICS = ["prompt-injection","data-exfiltration","supply-chain","identity-auth",
+                     "sandbox-escape","memory-poisoning","vulnerability","red-teaming",
+                     "detection-response","governance","model-security"];
   const active = new Set();
-  let minImp = 1, query = "", lens = false;
+  const activeSubs = new Set();
+  let minImp = 1, query = "", activeLens = null, sortMode = "newest";
   const served = location.protocol === "http:" || location.protocol === "https:";
 
   const esc = s => (s || "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -370,59 +399,114 @@
     }
   }
 
-  function render() {
-    let items = D.items.filter(i =>
-      i.importance >= minImp &&
+  function cardHTML(i) {
+    const L = activeLens ? LENSES[activeLens] : null;
+    const badge = L ? `<span class="pebadge">${L.label.split(" ")[0]} ${i[L.score] || 0}/3</span>` : "";
+    const angle = (L && i[L.angle])
+      ? `<div class="peangle"><b>${L.note}:</b> ${esc(i[L.angle])}</div>`
+      : `<div class="angle">${esc(i.privacy_angle)}</div>`;
+    const subs = (i.subtopics || []).map(s => `<span class="subtag">${s}</span>`).join(" ");
+    return `<article class="card">
+      <h3><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.title)}</a></h3>
+      <div class="meta">
+        <span class="imp">${"●".repeat(i.importance)}${"○".repeat(5 - i.importance)}</span>
+        ${badge}
+        <span>${esc(i.source)}</span><span>${esc(i.published || "date unknown")}</span>
+        ${i.tags.map(t => `<span class="tag">${t}</span>`).join("")}
+      </div>
+      <div>${esc(i.summary)}</div>
+      ${angle}
+      ${subs ? `<div class="meta" style="margin-top:8px">${subs}</div>` : ""}
+    </article>`;
+  }
+
+  function passes(i) {
+    return i.importance >= minImp &&
       (!active.size || i.tags.some(t => active.has(t))) &&
-      (!query || (i.title + i.summary + i.source + i.privacy_angle).toLowerCase().includes(query))
-    );
-    if (lens) {
-      items = items.filter(i => (i.pe_score || 0) >= 2)
-                   .sort((a, b) => (b.pe_score - a.pe_score) || (b.importance - a.importance));
+      (!activeSubs.size || (i.subtopics || []).some(t => activeSubs.has(t))) &&
+      (!activeLens || (i[LENSES[activeLens].score] || 0) >= 2) &&
+      (!query || (i.title + i.summary + i.source + (i.pe_angle || "") +
+                  (i.sec_angle || "") + (i.law_angle || "")).toLowerCase().includes(query));
+  }
+
+  function render() {
+    const items = D.items.filter(passes);
+    const sc = activeLens ? LENSES[activeLens].score : null;
+    const stats = document.getElementById("stats");
+    const listEl = document.getElementById("list");
+
+    if (sortMode === "subtopic") {
+      const wanted = activeSubs.size ? SUBTOPICS.filter(s => activeSubs.has(s)) : SUBTOPICS;
+      const groups = wanted.map(s => ({
+        s,
+        rows: items.filter(i => (i.subtopics || []).includes(s)).sort((a, b) =>
+          sc ? (b[sc] - a[sc]) || (b.importance - a.importance) : b.importance - a.importance),
+      })).filter(g => g.rows.length);
+      stats.textContent = `${items.length} stories across ${groups.length} subtopics`;
+      listEl.innerHTML = groups.length
+        ? groups.map(g => `<h4 class="grouphead">${g.s} (${g.rows.length})</h4>` +
+                          g.rows.map(cardHTML).join("")).join("")
+        : '<div class="empty">No stories match.</div>';
+      return;
     }
-    document.getElementById("stats").textContent = lens
-      ? `${items.length} privacy-eng stories`
+
+    if (sc) items.sort((a, b) => (b[sc] - a[sc]) || (b.importance - a.importance));
+    else if (sortMode === "importance") items.sort((a, b) => b.importance - a.importance);
+
+    stats.textContent = activeLens
+      ? `${items.length} ${LENSES[activeLens].name} stories`
       : `${items.length} of ${D.items.length} stories`;
-    document.getElementById("list").innerHTML = items.length ? items.map(i => `
-      <article class="card">
-        <h3><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.title)}</a></h3>
-        <div class="meta">
-          <span class="imp">${"●".repeat(i.importance)}${"○".repeat(5 - i.importance)}</span>
-          ${lens ? `<span class="pebadge">🔒 ${i.pe_score}/3</span>` : ""}
-          <span>${esc(i.source)}</span><span>${esc(i.published || "date unknown")}</span>
-          ${i.tags.map(t => `<span class="tag">${t}</span>`).join("")}
-        </div>
-        <div>${esc(i.summary)}</div>
-        <div class="angle">${esc(i.privacy_angle)}</div>
-        ${lens && i.pe_angle ? `<div class="peangle"><b>For privacy engineers:</b> ${esc(i.pe_angle)}</div>` : ""}
-      </article>`).join("")
-      : (lens
-          ? '<div class="empty">No privacy-engineering stories match — loosen filters or run a scan.</div>'
-          : '<div class="empty">No stories match — run a scan or loosen filters.</div>');
+    listEl.innerHTML = items.length ? items.map(cardHTML).join("")
+      : '<div class="empty">No stories match. Run a scan or loosen filters.</div>';
   }
 
   let refreshDigest = () => {};
-  const lensBtn = document.getElementById("lensBtn");
-  lensBtn.onclick = () => {
-    lens = !lens; lensBtn.classList.toggle("on", lens);
-    render(); refreshDigest();
-  };
 
-  const controls = document.getElementById("controls");
+  // lens toggles (privacy / security / law), mutually exclusive
+  const lensGroup = document.getElementById("lensGroup");
+  const lensButtons = {};
+  Object.entries(LENSES).forEach(([key, L]) => {
+    const b = document.createElement("button");
+    b.className = "lensbtn"; b.textContent = L.label;
+    b.title = `Show only ${L.name} stories, ranked by relevance`;
+    b.onclick = () => {
+      activeLens = activeLens === key ? null : key;
+      Object.entries(lensButtons).forEach(([k, btn]) => btn.classList.toggle("on", k === activeLens));
+      render(); refreshDigest();
+    };
+    lensButtons[key] = b; lensGroup.appendChild(b);
+  });
+
+  // tag chips + importance
+  const tagControls = document.getElementById("tagControls");
   TAGS.forEach(t => {
     const b = document.createElement("button");
     b.className = "chip"; b.textContent = t;
     b.onclick = () => { active.has(t) ? active.delete(t) : active.add(t);
                         b.classList.toggle("on"); render(); };
-    controls.appendChild(b);
+    tagControls.appendChild(b);
   });
   const impBtn = document.createElement("button");
   impBtn.className = "chip"; impBtn.textContent = "importance ≥ 1";
   impBtn.onclick = () => { minImp = minImp >= 5 ? 1 : minImp + 1;
                            impBtn.textContent = "importance ≥ " + minImp;
                            impBtn.classList.toggle("on", minImp > 1); render(); };
-  controls.appendChild(impBtn);
+  tagControls.appendChild(impBtn);
+
+  // security subtopic chips
+  const subControls = document.getElementById("subControls");
+  subControls.appendChild(Object.assign(document.createElement("span"),
+    { className: "sublabel", textContent: "Security subtopic:" }));
+  SUBTOPICS.forEach(t => {
+    const b = document.createElement("button");
+    b.className = "chip sub"; b.textContent = t;
+    b.onclick = () => { activeSubs.has(t) ? activeSubs.delete(t) : activeSubs.add(t);
+                        b.classList.toggle("on"); render(); };
+    subControls.appendChild(b);
+  });
+
   document.getElementById("q").oninput = e => { query = e.target.value.toLowerCase(); render(); };
+  document.getElementById("sortSel").onchange = e => { sortMode = e.target.value; render(); };
 
   const pick = document.getElementById("digestPick");
   if (D.digests.length) {
@@ -430,7 +514,7 @@
     refreshDigest = () => {
       const d = D.digests[pick.value || 0];
       // When the lens is on and this day has a privacy-eng variant, show it.
-      const src = (lens && d.pe_markdown) ? d.pe_markdown : d.markdown;
+      const src = (activeLens === "pe" && d.pe_markdown) ? d.pe_markdown : d.markdown;
       document.getElementById("digest").innerHTML = md(src);
     };
     pick.onchange = refreshDigest;

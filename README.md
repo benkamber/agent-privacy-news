@@ -1,6 +1,6 @@
 # agent-privacy-news
 
-A self-updating tracker for privacy and security news in the agentic AI space. It watches three lenses: attacks and data leakage through the tools agents use, Model Context Protocol (MCP) server vulnerabilities, and agent-to-agent identity, authentication, and the wider cloud-platform and regulatory picture. It pulls from about 40 sources, uses Claude to pick and summarize the stories that matter, scores each one for how useful it is to a privacy engineer building privacy controls into agentic systems, and serves a local web page with a daily digest, an on-demand delta report, and a deep weekly synthesis that reads each paper in full.
+A self-updating tracker for privacy and security news in the agentic AI space. It covers attacks and data leakage through the tools agents use, Model Context Protocol (MCP) server vulnerabilities, agent-to-agent identity and authentication, and the wider cloud-platform and regulatory picture. It pulls from about 40 sources and uses Claude to pick and summarize the stories that matter. Each story is scored on three lenses (privacy, security, law) and tagged with security subtopics (prompt injection, supply chain, identity, and so on), so a privacy engineer, a security analyst, or a policy lead can each filter to what they care about. It serves a local web page with a daily digest, an on-demand delta report, and a deep weekly synthesis that reads each paper in full.
 
 Nothing is hosted. It runs on your machine and writes plain files.
 
@@ -55,7 +55,9 @@ The page has a news list, a digest panel, and a synthesis banner across the top.
 
 **Scan now** pulls fresh news and summarizes it. The freshness pill next to it turns green under a day old, amber under three days, red beyond that.
 
-**🔒 Privacy-eng lens** filters the list to stories relevant to building agentic privacy capabilities, ranks them by that relevance, and adds a one-line note on each saying which control it informs. The daily digest panel switches to a privacy-engineering view when the lens is on.
+**Lenses** (🔒 Privacy, 🛡 Security, ⚖ Law) each filter the list to stories that matter to that audience, rank them by relevance, and add a one-line note per story: which control it informs for privacy, which defense or threat for security, which obligation or risk for law. One lens is active at a time; click it again to turn it off. With the privacy lens on, the daily digest panel switches to its privacy-engineering view.
+
+**Security subtopic** chips filter by theme (prompt injection, data exfiltration, supply chain, identity and auth, sandbox escape, memory poisoning, vulnerability, red teaming, detection and response, governance, model security). The **Sort** control orders the list by newest, by importance, or grouped by subtopic. Grouping plus a lens gives a security analyst a per-theme reading list ranked by relevance.
 
 **📋 Report** opens a copy-paste report of only the privacy-eng stories that are new since the last time you ran it. Each run marks what it covered, so the next one shows only fresh deltas.
 

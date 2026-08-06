@@ -19,6 +19,17 @@ DATA_JS = ROOT / "ui" / "data.js"
 
 TAGS = {"tools", "mcp", "a2a", "polycloud", "regulation", "incident", "research", "product"}
 
+# Security subtopics (keep in sync with SUBTOPICS in summarize.py and the UI).
+SUBTOPICS = {"prompt-injection", "data-exfiltration", "supply-chain",
+             "identity-auth", "sandbox-escape", "memory-poisoning",
+             "vulnerability", "red-teaming", "detection-response",
+             "governance", "model-security"}
+
+
+def _score(v):
+    """Clamp a 0-3 lens score, or None if not yet classified."""
+    return max(0, min(3, int(v))) if v is not None else None
+
 
 def norm_url(url: str) -> str:
     u = url.strip().rstrip("/")
@@ -59,10 +70,16 @@ def ingest(path: str) -> None:
             "summary": it.get("summary", "").strip(),
             "privacy_angle": it.get("privacy_angle", "").strip(),
             "importance": max(1, min(5, int(it.get("importance", 3)))),
-            # privacy-engineer lens: 0-3 relevance for building agentic privacy
-            # capabilities (None = not yet classified; backfill via summarize.py lens)
-            "pe_score": (max(0, min(3, int(pe))) if pe is not None else None),
+            # three audience lenses, each 0-3 (None = not yet classified;
+            # backfill via summarize.py lens). privacy / security / law.
+            "pe_score": _score(pe),
             "pe_angle": (it.get("pe_angle") or "").strip(),
+            "sec_score": _score(it.get("sec_score")),
+            "sec_angle": (it.get("sec_angle") or "").strip(),
+            "law_score": _score(it.get("law_score")),
+            "law_angle": (it.get("law_angle") or "").strip(),
+            # security subtopics for theme sorting.
+            "subtopics": [t for t in it.get("subtopics", []) if t in SUBTOPICS],
             # delta tracking for the privacy-eng report: True once an item has
             # been included in a generated report.
             "reported": bool(it.get("reported", False)),

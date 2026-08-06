@@ -31,6 +31,29 @@ PRICE_IN, PRICE_OUT = 5.00, 25.00  # $ per MTok
 
 TAGS = ["tools", "mcp", "a2a", "polycloud", "regulation", "incident", "research", "product"]
 
+# Security subtopics: a theme axis for the security community to sort by. An item
+# carries 1-3. Keep this list in sync with SUBTOPICS in newsdb.py and the UI.
+SUBTOPICS = ["prompt-injection", "data-exfiltration", "supply-chain",
+             "identity-auth", "sandbox-escape", "memory-poisoning",
+             "vulnerability", "red-teaming", "detection-response",
+             "governance", "model-security"]
+
+SUBTOPIC_DEF = """\
+Security subtopics (`subtopics`): assign 1-3 per item from this set so the
+security community can sort by theme. Pick the ones that genuinely fit; do not
+force all.
+  prompt-injection: direct or indirect injection, including data/agent injection.
+  data-exfiltration: leakage of user data, credentials, or secrets.
+  supply-chain: poisoned packages, malicious or typosquatted MCP servers, deps.
+  identity-auth: agent identity, authn/z, delegation, impersonation, spoofing.
+  sandbox-escape: isolation failure, RCE, container or VM escape.
+  memory-poisoning: attacks on an agent's persistent memory or state.
+  vulnerability: a disclosed CVE or concrete flaw in a product or tool.
+  red-teaming: offensive testing, benchmarks, evals, attack frameworks.
+  detection-response: defensive tooling, monitoring, DLP, SIEM, guardrails.
+  governance: policy, compliance, regulation, audit, standards.
+  model-security: model-level attacks such as jailbreak, backdoor, or poisoning."""
+
 MISSION = """\
 You are the aggregation engine for a privacy-news tracker focused on agentic AI.
 Coverage has three lenses:
@@ -66,6 +89,31 @@ DLP/governance and audit.
       breach story with no reusable control lesson).
 `pe_angle`: one short sentence naming the capability/control the story informs
 (empty string when pe_score is 0 or 1)."""
+
+SEC_LENS_DEF = """\
+The security lens (`sec_score`, 0-3) rates how useful a story is to a security
+engineer or analyst securing agentic systems: threat detection, vulnerability
+management, attack techniques to defend against, red-teaming, hardening, secure
+architecture, and incident response.
+  3 = directly informs a detection, defense, or hardening decision (a technique,
+      a flaw to patch, an attack to detect, a control to deploy).
+  2 = clearly relevant security context.
+  1 = tangential.
+  0 = not a security story.
+`sec_angle`: one short sentence on the defensive action or threat it informs
+(empty string when sec_score is 0 or 1)."""
+
+LAW_LENS_DEF = """\
+The law lens (`law_score`, 0-3) rates how relevant a story is to a legal,
+policy, or compliance professional tracking agentic AI: regulation and
+enforcement (EU AI Act, GDPR, FTC, state law), liability, disclosure and
+transparency duties, standards, contracts and DPAs, and legal risk.
+  3 = a law, enforcement action, ruling, or duty to comply with or advise on.
+  2 = clearly relevant legal or policy context.
+  1 = tangential.
+  0 = no legal or regulatory angle.
+`law_angle`: one short sentence on the obligation, risk, or development it
+raises (empty string when law_score is 0 or 1)."""
 
 # Condensed rubric from a privacy-review framework (Hoepman's 8 privacy-by-design
 # strategies + data-subject rights), used to structure the weekly synthesis into
@@ -149,7 +197,7 @@ and quoted titles stay exactly as written."""
 
 def _system(extra: str = "") -> str:
     """Shared system prompt for all prose-producing calls."""
-    parts = [MISSION, PROSE_DIRECTIVE, LENS_DEF]
+    parts = [MISSION, PROSE_DIRECTIVE, LENS_DEF, SEC_LENS_DEF, LAW_LENS_DEF, SUBTOPIC_DEF]
     if extra:
         parts.append(extra)
     return "\n\n".join(parts)
@@ -172,10 +220,17 @@ ITEM_SCHEMA = {
                     "importance": {"type": "integer", "enum": [1, 2, 3, 4, 5]},
                     "pe_score": {"type": "integer", "enum": [0, 1, 2, 3]},
                     "pe_angle": {"type": "string"},
+                    "sec_score": {"type": "integer", "enum": [0, 1, 2, 3]},
+                    "sec_angle": {"type": "string"},
+                    "law_score": {"type": "integer", "enum": [0, 1, 2, 3]},
+                    "law_angle": {"type": "string"},
+                    "subtopics": {"type": "array",
+                                  "items": {"type": "string", "enum": SUBTOPICS}},
                 },
                 "required": ["title", "url", "source", "published", "tags",
                              "summary", "privacy_angle", "importance",
-                             "pe_score", "pe_angle"],
+                             "pe_score", "pe_angle", "sec_score", "sec_angle",
+                             "law_score", "law_angle", "subtopics"],
                 "additionalProperties": False,
             },
         },
@@ -239,8 +294,10 @@ def triage(args) -> int:
             "role": "user",
             "content": (
                 "Triage these feed candidates into store-ready news items. "
-                "Also score each kept item on the privacy-engineer lens "
-                "(pe_score / pe_angle) defined in the system prompt.\n\n"
+                "For each kept item also fill the privacy, security, and law "
+                "lenses (pe_score/pe_angle, sec_score/sec_angle, law_score/"
+                "law_angle) and assign 1-3 security subtopics, all defined in "
+                "the system prompt.\n\n"
                 "Rules:\n"
                 "- Keep only stories genuinely about privacy/security/compliance in "
                 "agentic AI per the three lenses. Drop vendor fluff, generic AI news, "
@@ -291,8 +348,15 @@ LENS_BACKFILL_SCHEMA = {
                     "id": {"type": "string"},
                     "pe_score": {"type": "integer", "enum": [0, 1, 2, 3]},
                     "pe_angle": {"type": "string"},
+                    "sec_score": {"type": "integer", "enum": [0, 1, 2, 3]},
+                    "sec_angle": {"type": "string"},
+                    "law_score": {"type": "integer", "enum": [0, 1, 2, 3]},
+                    "law_angle": {"type": "string"},
+                    "subtopics": {"type": "array",
+                                  "items": {"type": "string", "enum": SUBTOPICS}},
                 },
-                "required": ["id", "pe_score", "pe_angle"],
+                "required": ["id", "pe_score", "pe_angle", "sec_score",
+                             "sec_angle", "law_score", "law_angle", "subtopics"],
                 "additionalProperties": False,
             },
         },
@@ -302,48 +366,62 @@ LENS_BACKFILL_SCHEMA = {
 }
 
 
-def lens(args) -> None:
-    """Backfill the privacy-engineer lens (pe_score/pe_angle) on stored items."""
-    items = newsdb.load_items()
-    todo = items if args.all else [i for i in items if i.get("pe_score") is None]
-    if not todo:
-        print("All items already carry a pe_score. Use --all to re-score.")
-        return
-    payload = [{"id": i["id"], "title": i["title"], "tags": i["tags"],
-                "summary": i["summary"], "privacy_angle": i["privacy_angle"]}
-               for i in todo]
-    client = client_or_die()
-    response = client.beta.messages.create(
-        model=MODEL,
-        max_tokens=16000,
-        betas=BETAS,
-        fallbacks="default",
-        system=[{"type": "text", "text": _system(),
-                 "cache_control": {"type": "ephemeral"}}],
-        output_config={"format": {"type": "json_schema", "schema": LENS_BACKFILL_SCHEMA}},
-        messages=[{
-            "role": "user",
-            "content": (
-                "Score each story below on the privacy-engineer lens defined in "
-                "the system prompt. Return one entry per story, keyed by its id.\n\n"
-                f"{json.dumps(payload, indent=1)}"
-            ),
-        }],
-    )
-    guard_refusal(response)
-    report_usage(response.usage, "lens")
+def _needs_lens(i: dict) -> bool:
+    return (i.get("pe_score") is None or i.get("sec_score") is None
+            or i.get("law_score") is None or not i.get("subtopics"))
 
-    text = next(b.text for b in response.content if b.type == "text")
-    scores = {s["id"]: s for s in json.loads(text)["scores"]}
+
+def lens(args) -> None:
+    """Backfill the privacy, security, and law lenses plus security subtopics."""
+    items = newsdb.load_items()
+    todo = items if args.all else [i for i in items if _needs_lens(i)]
+    if not todo:
+        print("All items already carry every lens. Use --all to re-score.")
+        return
+    client = client_or_die()
+    scores = {}
+    BATCH = 25  # keep each response well under the token cap so JSON stays intact
+    for start in range(0, len(todo), BATCH):
+        batch = todo[start:start + BATCH]
+        payload = [{"id": i["id"], "title": i["title"], "tags": i["tags"],
+                    "summary": i["summary"], "privacy_angle": i["privacy_angle"]}
+                   for i in batch]
+        response = client.beta.messages.create(
+            model=MODEL,
+            max_tokens=8000,
+            betas=BETAS,
+            fallbacks="default",
+            system=[{"type": "text", "text": _system(),
+                     "cache_control": {"type": "ephemeral"}}],
+            output_config={"format": {"type": "json_schema", "schema": LENS_BACKFILL_SCHEMA}},
+            messages=[{
+                "role": "user",
+                "content": (
+                    "Score each story below on all three lenses (privacy, "
+                    "security, law) and assign 1-3 security subtopics, per the "
+                    "system prompt. Return one entry per story, keyed by its id.\n\n"
+                    f"{json.dumps(payload, indent=1)}"
+                ),
+            }],
+        )
+        guard_refusal(response)
+        report_usage(response.usage, f"lens {start // BATCH + 1}")
+        text = next(b.text for b in response.content if b.type == "text")
+        for s in json.loads(text)["scores"]:
+            scores[s["id"]] = s
+
     updated = 0
     for i in items:
         s = scores.get(i["id"])
-        if s is not None:
-            i["pe_score"] = max(0, min(3, int(s["pe_score"])))
-            i["pe_angle"] = (s.get("pe_angle") or "").strip()
-            updated += 1
+        if s is None:
+            continue
+        for k in ("pe", "sec", "law"):
+            i[f"{k}_score"] = max(0, min(3, int(s[f"{k}_score"])))
+            i[f"{k}_angle"] = (s.get(f"{k}_angle") or "").strip()
+        i["subtopics"] = [t for t in s.get("subtopics", []) if t in SUBTOPICS]
+        updated += 1
     (ROOT / "data" / "items.json").write_text(json.dumps(items, indent=2) + "\n")
-    print(f"scored {updated} item(s)")
+    print(f"scored {updated} item(s) on privacy/security/law + subtopics")
     newsdb.build()
 
 
@@ -620,7 +698,7 @@ def main() -> None:
     d = sub.add_parser("digest", help="write the daily digest via Claude")
     d.add_argument("--date", help="digest date YYYY-MM-DD (default today)")
     d.add_argument("--days", type=int, default=1, help="include items fetched in the last N days")
-    ln = sub.add_parser("lens", help="backfill the privacy-engineer lens on stored items")
+    ln = sub.add_parser("lens", help="backfill privacy/security/law lenses + subtopics on stored items")
     ln.add_argument("--all", action="store_true", help="re-score every item, not just unscored ones")
     sub.add_parser("report", help="delta report: privacy-eng items new since the last report")
     sy = sub.add_parser("synthesis", help="weekly deep synthesis: reads each paper, /privacy-review framed")
