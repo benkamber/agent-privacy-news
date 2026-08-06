@@ -55,13 +55,31 @@ The page has a news list, a digest panel, and a synthesis banner across the top.
 
 **Scan now** pulls fresh news and summarizes it. The freshness pill next to it turns green under a day old, amber under three days, red beyond that.
 
-**Lenses** (🔒 Privacy, 🛡 Security, ⚖ Law) each filter the list to stories that matter to that audience, rank them by relevance, and add a one-line note per story: which control it informs for privacy, which defense or threat for security, which obligation or risk for law. One lens is active at a time; click it again to turn it off. With the privacy lens on, the daily digest panel switches to its privacy-engineering view.
+**Lenses** (🔒 Privacy, 🛡 Security, ⚖ Law) each filter the list to stories that matter to that audience, rank them by relevance, and add a one-line note per story: which control it informs for privacy, which defense or threat for security, which obligation or risk for law. The lenses are multi-select. Turn on two and the list narrows to the cross-cutting stories, the ones relevant to both, ranked by combined relevance, with each lens's angle on the card. With the privacy lens on, the daily digest panel switches to its privacy-engineering view.
 
-**Security subtopic** chips filter by theme (prompt injection, data exfiltration, supply chain, identity and auth, sandbox escape, memory poisoning, vulnerability, red teaming, detection and response, governance, model security). The **Sort** control orders the list by newest, by importance, or grouped by subtopic. Grouping plus a lens gives a security analyst a per-theme reading list ranked by relevance.
+**Subtopic** chips filter by theme within three domains. Privacy covers data governance, PETs, consent, data minimization, deletion and erasure, and the rest. Security covers prompt injection, data exfiltration, supply chain, identity, sandbox escape, and so on. Legal covers the EU AI Act, GDPR, US state privacy law, FTC actions, liability, and more. Chips and card badges are color-coded by domain. The **Sort** control orders the list by newest, by importance, or grouped by subtopic. Grouping plus a lens gives a per-theme reading list ranked by relevance.
 
 **📋 Report** opens a copy-paste report of only the privacy-eng stories that are new since the last time you ran it. Each run marks what it covered, so the next one shows only fresh deltas.
 
 **🔬 Weekly synthesis** sits at the top as a standing panel. Press **Update** and it fetches each paper's full text, then writes a plain-language, mechanism-level briefing: the longer-term trends, a per-development breakdown of what it is and how it works and what it means for your roadmap, and a privacy-by-design gap map of what the industry shipped this window versus what is still missing. The panel shows the big picture by default with an expander for the full document and a copy button.
+
+## Publish to the web (Cloudflare Pages)
+
+The UI and its data hold no secrets, so you can publish a read-only copy for a team to browse. The published page shows the news, lenses, subtopics, digests, and the latest synthesis, but not the Scan, Report, or Update buttons, since those need the local server.
+
+One-time, authenticate wrangler (opens a browser):
+
+```sh
+npx wrangler login
+```
+
+Then deploy or redeploy:
+
+```sh
+./scripts/deploy-cloudflare.sh
+```
+
+That rebuilds `ui/data.js` and pushes the `ui/` directory to a Cloudflare Pages project named `agent-privacy-news`. Cloudflare prints the public URL. Run the script again to refresh the site after a scan, or add it to the end of `scripts/daily-hunt-api.sh` so each morning's scan republishes. Instead of `wrangler login` you can put `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in `.env`.
 
 ## Command line
 

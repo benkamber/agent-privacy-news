@@ -19,11 +19,17 @@ DATA_JS = ROOT / "ui" / "data.js"
 
 TAGS = {"tools", "mcp", "a2a", "polycloud", "regulation", "incident", "research", "product"}
 
-# Security subtopics (keep in sync with SUBTOPICS in summarize.py and the UI).
+# Subtopic taxonomies (keep in sync with summarize.py and the UI).
 SUBTOPICS = {"prompt-injection", "data-exfiltration", "supply-chain",
              "identity-auth", "sandbox-escape", "memory-poisoning",
              "vulnerability", "red-teaming", "detection-response",
              "governance", "model-security"}
+PE_SUBTOPICS = {"data-governance", "pets", "consent", "data-minimization",
+                "deletion-erasure", "de-identification", "data-residency",
+                "differential-privacy", "access-portability", "purpose-limitation"}
+LAW_SUBTOPICS = {"eu-ai-act", "gdpr", "us-state-privacy", "ftc", "liability",
+                 "cross-border-transfer", "sector-regulation", "litigation",
+                 "standards", "disclosure-duty"}
 
 
 def _score(v):
@@ -78,8 +84,10 @@ def ingest(path: str) -> None:
             "sec_angle": (it.get("sec_angle") or "").strip(),
             "law_score": _score(it.get("law_score")),
             "law_angle": (it.get("law_angle") or "").strip(),
-            # security subtopics for theme sorting.
+            # subtopics for theme sorting: security, privacy, legal.
             "subtopics": [t for t in it.get("subtopics", []) if t in SUBTOPICS],
+            "pe_subtopics": [t for t in it.get("pe_subtopics", []) if t in PE_SUBTOPICS],
+            "law_subtopics": [t for t in it.get("law_subtopics", []) if t in LAW_SUBTOPICS],
             # delta tracking for the privacy-eng report: True once an item has
             # been included in a generated report.
             "reported": bool(it.get("reported", False)),

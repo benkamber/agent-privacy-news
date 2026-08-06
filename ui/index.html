@@ -98,8 +98,12 @@
   .peangle b { color: var(--accent); }
   .subtag { border: 1px solid var(--line); border-radius: 4px; padding: 0 6px;
             font-size: 11px; color: var(--muted); }
+  .subtag.pe  { border-color: var(--accent); color: var(--accent); }
+  .subtag.sec { border-color: var(--warn); color: var(--warn); }
+  .subtag.law { border-color: var(--ok); color: var(--ok); }
   .grouphead { font-size: 13px; font-weight: 600; color: var(--accent);
                margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+  .grouphead.sec { color: var(--warn); } .grouphead.law { color: var(--ok); }
   .grouphead:first-child { margin-top: 0; }
   input[type=search] {
     border: 1px solid var(--line); background: var(--panel); color: var(--ink);
@@ -205,11 +209,29 @@
   const SUBTOPICS = ["prompt-injection","data-exfiltration","supply-chain","identity-auth",
                      "sandbox-escape","memory-poisoning","vulnerability","red-teaming",
                      "detection-response","governance","model-security"];
+  const PE_SUBTOPICS = ["data-governance","pets","consent","data-minimization","deletion-erasure",
+                        "de-identification","data-residency","differential-privacy",
+                        "access-portability","purpose-limitation"];
+  const LAW_SUBTOPICS = ["eu-ai-act","gdpr","us-state-privacy","ftc","liability",
+                         "cross-border-transfer","sector-regulation","litigation",
+                         "standards","disclosure-duty"];
+  const SUBTOPIC_GROUPS = [
+    { label: "Privacy",  dom: "pe",  key: "pe_subtopics",  list: PE_SUBTOPICS },
+    { label: "Security", dom: "sec", key: "subtopics",     list: SUBTOPICS },
+    { label: "Legal",    dom: "law", key: "law_subtopics", list: LAW_SUBTOPICS },
+  ];
+  const SUB_DOMAIN = {};
+  SUBTOPIC_GROUPS.forEach(g => g.list.forEach(s => { SUB_DOMAIN[s] = g.dom; }));
+  const ALL_SUBTOPICS = SUBTOPIC_GROUPS.flatMap(g => g.list);
+  const itemSubs = i => SUBTOPIC_GROUPS.flatMap(g => i[g.key] || []);
   const active = new Set();
   const activeSubs = new Set();
   const activeLenses = new Set();   // multi-select; AND = cross-cutting stories
   let minImp = 1, query = "", sortMode = "newest";
-  const served = location.protocol === "http:" || location.protocol === "https:";
+  // Action buttons need the local server (scripts/ui.sh). We probe for it; on a
+  // static host like the public Cloudflare site there is no server, so the page
+  // stays cleanly read-only. `apiUp` flips true once the probe succeeds.
+  let apiUp = false;
 
   const esc = s => (s || "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
 
@@ -314,23 +336,17 @@
     }
   }
 
-  if (served) {
-    scanBtn.onclick = runScan;
-    reportBtn.onclick = () => runTask("/api/report",
-      "Privacy report — new since your last report",
+  scanBtn.style.display = "none";
+  reportBtn.style.display = "none";
+  fetch("/api/status").then(r => r.ok ? r.json() : Promise.reject()).then(s => {
+    apiUp = true;
+    scanBtn.style.display = ""; scanBtn.onclick = runScan;
+    reportBtn.style.display = ""; reportBtn.onclick = () => runTask("/api/report",
+      "Privacy report, new since your last report",
       "Generating the delta report…", reportBtn);
-    // If a task is already running (e.g. page reloaded mid-run), reflect it.
-    fetch("/api/status").then(r => r.json()).then(s => {
-      if (s.running) { scanBtn.disabled = true; scanBtn.classList.add("busy"); scanBtn.textContent = "⟳ Working…"; }
-    }).catch(() => {});
-  } else {
-    // Opened as a file:// page — no server to run tasks.
-    scanBtn.replaceWith(Object.assign(document.createElement("span"), {
-      className: "scanhint",
-      innerHTML: "Run <code>./scripts/ui.sh</code> and open the printed localhost URL to enable Scan / Report / Synthesis.",
-    }));
-    reportBtn.style.display = "none";
-  }
+    if (s.running) { scanBtn.disabled = true; scanBtn.classList.add("busy"); scanBtn.textContent = "⟳ Working…"; }
+    renderSynth();
+  }).catch(() => { /* no local server: read-only site */ });
 
   // --- weekly synthesis: persistent top panel ---
   const synthWrap = document.getElementById("synthWrap");
@@ -356,10 +372,9 @@
       synthWrap.innerHTML = `<div class="synthpanel"><div class="synthhead">
         <div class="synthtitle">🔬 Weekly Privacy-Engineering Synthesis
           <span class="synthfresh">not generated yet</span></div>
-        <div class="synthctrls">${served
-          ? '<button class="scanbtn" id="synthUpdate">↻ Generate</button>'
-          : '<span class="scanhint">serve the UI to enable</span>'}</div></div>
-        <div class="synthbody digest"><p class="empty">A deep weekly briefing that reads every paper in full and maps developments to a privacy-by-design gap map — plain language, mechanism-level, with a "so what" for the capabilities team. Press Generate (reads the papers; ~1–2 min).</p></div></div>`;
+        <div class="synthctrls">${apiUp
+          ? '<button class="scanbtn" id="synthUpdate">↻ Generate</button>' : ''}</div></div>
+        <div class="synthbody digest"><p class="empty">A deep weekly briefing that reads every paper in full and maps developments to a privacy-by-design gap map. Plain language, mechanism-level, with a "so what" for the capabilities team. Reading the papers takes about a minute or two.</p></div></div>`;
     } else {
       const f = ago(synthGen);
       const body = synthFull ? synthMd : bigPicture(synthMd);
@@ -369,7 +384,7 @@
         <div class="synthctrls">
           <button class="chip" id="synthToggle">${synthFull ? "Big picture ▴" : "Full synthesis ▾"}</button>
           <button class="chip" id="synthCopy">Copy</button>
-          ${served ? '<button class="scanbtn" id="synthUpdate">↻ Update</button>' : ''}
+          ${apiUp ? '<button class="scanbtn" id="synthUpdate">↻ Update</button>' : ''}
         </div></div>
         <div class="synthbody digest ${synthFull ? "full" : ""}">${md(body)}</div></div>`;
       document.getElementById("synthToggle").onclick = () => { synthFull = !synthFull; renderSynth(); };
@@ -412,7 +427,7 @@
       ? ls.map(k => i[LENSES[k].angle]
           ? `<div class="peangle"><b>${LENSES[k].note}:</b> ${esc(i[LENSES[k].angle])}</div>` : "").join("")
       : `<div class="angle">${esc(i.privacy_angle)}</div>`;
-    const subs = (i.subtopics || []).map(s => `<span class="subtag">${s}</span>`).join(" ");
+    const subs = itemSubs(i).map(s => `<span class="subtag ${SUB_DOMAIN[s] || ""}">${s}</span>`).join(" ");
     return `<article class="card">
       <h3><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.title)}</a></h3>
       <div class="meta">
@@ -430,7 +445,7 @@
   function passes(i) {
     return i.importance >= minImp &&
       (!active.size || i.tags.some(t => active.has(t))) &&
-      (!activeSubs.size || (i.subtopics || []).some(t => activeSubs.has(t))) &&
+      (!activeSubs.size || itemSubs(i).some(t => activeSubs.has(t))) &&
       lensList().every(k => (i[LENSES[k].score] || 0) >= 2) &&
       (!query || (i.title + i.summary + i.source + (i.pe_angle || "") +
                   (i.sec_angle || "") + (i.law_angle || "")).toLowerCase().includes(query));
@@ -443,15 +458,15 @@
     const listEl = document.getElementById("list");
 
     if (sortMode === "subtopic") {
-      const wanted = activeSubs.size ? SUBTOPICS.filter(s => activeSubs.has(s)) : SUBTOPICS;
+      const wanted = activeSubs.size ? ALL_SUBTOPICS.filter(s => activeSubs.has(s)) : ALL_SUBTOPICS;
       const groups = wanted.map(s => ({
         s,
-        rows: items.filter(i => (i.subtopics || []).includes(s))
+        rows: items.filter(i => itemSubs(i).includes(s))
                    .sort(anyLens ? byRel : (a, b) => b.importance - a.importance),
       })).filter(g => g.rows.length);
       stats.textContent = `${items.length} stories across ${groups.length} subtopics`;
       listEl.innerHTML = groups.length
-        ? groups.map(g => `<h4 class="grouphead">${g.s} (${g.rows.length})</h4>` +
+        ? groups.map(g => `<h4 class="grouphead ${SUB_DOMAIN[g.s] || ""}">${g.s} (${g.rows.length})</h4>` +
                           g.rows.map(cardHTML).join("")).join("")
         : '<div class="empty">No stories match.</div>';
       return;
@@ -503,14 +518,16 @@
 
   // security subtopic chips
   const subControls = document.getElementById("subControls");
-  subControls.appendChild(Object.assign(document.createElement("span"),
-    { className: "sublabel", textContent: "Security subtopic:" }));
-  SUBTOPICS.forEach(t => {
-    const b = document.createElement("button");
-    b.className = "chip sub"; b.textContent = t;
-    b.onclick = () => { activeSubs.has(t) ? activeSubs.delete(t) : activeSubs.add(t);
-                        b.classList.toggle("on"); render(); };
-    subControls.appendChild(b);
+  SUBTOPIC_GROUPS.forEach(g => {
+    subControls.appendChild(Object.assign(document.createElement("span"),
+      { className: "sublabel", textContent: g.label + ":" }));
+    g.list.forEach(t => {
+      const b = document.createElement("button");
+      b.className = `chip sub ${g.dom}`; b.textContent = t;
+      b.onclick = () => { activeSubs.has(t) ? activeSubs.delete(t) : activeSubs.add(t);
+                          b.classList.toggle("on"); render(); };
+      subControls.appendChild(b);
+    });
   });
 
   document.getElementById("q").oninput = e => { query = e.target.value.toLowerCase(); render(); };

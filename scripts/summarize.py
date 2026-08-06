@@ -54,6 +54,40 @@ force all.
   governance: policy, compliance, regulation, audit, standards.
   model-security: model-level attacks such as jailbreak, backdoor, or poisoning."""
 
+PE_SUBTOPICS = ["data-governance", "pets", "consent", "data-minimization",
+                "deletion-erasure", "de-identification", "data-residency",
+                "differential-privacy", "access-portability", "purpose-limitation"]
+
+PE_SUBTOPIC_DEF = """\
+Privacy subtopics (`pe_subtopics`): assign 0-3 that fit; empty array if none.
+  data-governance: policy, cataloging, ownership, and lifecycle of data.
+  pets: privacy-enhancing tech (encryption in use, federated learning, enclaves, MPC).
+  consent: consent capture, granularity, revocation.
+  data-minimization: collecting or retaining less data.
+  deletion-erasure: deleting data on request, including logs, memory, training sets.
+  de-identification: anonymization, pseudonymization, redaction.
+  data-residency: where data is stored or processed, sovereignty.
+  differential-privacy: DP mechanisms and budgets.
+  access-portability: data-subject access and export.
+  purpose-limitation: binding data use to a stated purpose."""
+
+LAW_SUBTOPICS = ["eu-ai-act", "gdpr", "us-state-privacy", "ftc", "liability",
+                 "cross-border-transfer", "sector-regulation", "litigation",
+                 "standards", "disclosure-duty"]
+
+LAW_SUBTOPIC_DEF = """\
+Legal subtopics (`law_subtopics`): assign 0-3 that fit; empty array if none.
+  eu-ai-act: the EU AI Act, its obligations and enforcement.
+  gdpr: GDPR and EU data protection.
+  us-state-privacy: CCPA, CPRA, and other US state privacy law.
+  ftc: FTC actions, guidance, US federal enforcement.
+  liability: who is responsible when an agent causes harm.
+  cross-border-transfer: international data-transfer rules.
+  sector-regulation: HIPAA, financial, and other sector rules.
+  litigation: lawsuits, rulings, court decisions.
+  standards: NIST, ISO, and formal standards or frameworks.
+  disclosure-duty: transparency, labeling, and notice obligations."""
+
 MISSION = """\
 You are the aggregation engine for a privacy-news tracker focused on agentic AI.
 Coverage has three lenses:
@@ -197,7 +231,8 @@ and quoted titles stay exactly as written."""
 
 def _system(extra: str = "") -> str:
     """Shared system prompt for all prose-producing calls."""
-    parts = [MISSION, PROSE_DIRECTIVE, LENS_DEF, SEC_LENS_DEF, LAW_LENS_DEF, SUBTOPIC_DEF]
+    parts = [MISSION, PROSE_DIRECTIVE, LENS_DEF, SEC_LENS_DEF, LAW_LENS_DEF,
+             SUBTOPIC_DEF, PE_SUBTOPIC_DEF, LAW_SUBTOPIC_DEF]
     if extra:
         parts.append(extra)
     return "\n\n".join(parts)
@@ -226,11 +261,16 @@ ITEM_SCHEMA = {
                     "law_angle": {"type": "string"},
                     "subtopics": {"type": "array",
                                   "items": {"type": "string", "enum": SUBTOPICS}},
+                    "pe_subtopics": {"type": "array",
+                                     "items": {"type": "string", "enum": PE_SUBTOPICS}},
+                    "law_subtopics": {"type": "array",
+                                      "items": {"type": "string", "enum": LAW_SUBTOPICS}},
                 },
                 "required": ["title", "url", "source", "published", "tags",
                              "summary", "privacy_angle", "importance",
                              "pe_score", "pe_angle", "sec_score", "sec_angle",
-                             "law_score", "law_angle", "subtopics"],
+                             "law_score", "law_angle", "subtopics",
+                             "pe_subtopics", "law_subtopics"],
                 "additionalProperties": False,
             },
         },
@@ -296,8 +336,9 @@ def triage(args) -> int:
                 "Triage these feed candidates into store-ready news items. "
                 "For each kept item also fill the privacy, security, and law "
                 "lenses (pe_score/pe_angle, sec_score/sec_angle, law_score/"
-                "law_angle) and assign 1-3 security subtopics, all defined in "
-                "the system prompt.\n\n"
+                "law_angle) and assign security subtopics, privacy subtopics "
+                "(pe_subtopics), and legal subtopics (law_subtopics), all "
+                "defined in the system prompt.\n\n"
                 "Rules:\n"
                 "- Keep only stories genuinely about privacy/security/compliance in "
                 "agentic AI per the three lenses. Drop vendor fluff, generic AI news, "
@@ -354,9 +395,14 @@ LENS_BACKFILL_SCHEMA = {
                     "law_angle": {"type": "string"},
                     "subtopics": {"type": "array",
                                   "items": {"type": "string", "enum": SUBTOPICS}},
+                    "pe_subtopics": {"type": "array",
+                                     "items": {"type": "string", "enum": PE_SUBTOPICS}},
+                    "law_subtopics": {"type": "array",
+                                      "items": {"type": "string", "enum": LAW_SUBTOPICS}},
                 },
                 "required": ["id", "pe_score", "pe_angle", "sec_score",
-                             "sec_angle", "law_score", "law_angle", "subtopics"],
+                             "sec_angle", "law_score", "law_angle", "subtopics",
+                             "pe_subtopics", "law_subtopics"],
                 "additionalProperties": False,
             },
         },
@@ -368,7 +414,8 @@ LENS_BACKFILL_SCHEMA = {
 
 def _needs_lens(i: dict) -> bool:
     return (i.get("pe_score") is None or i.get("sec_score") is None
-            or i.get("law_score") is None or not i.get("subtopics"))
+            or i.get("law_score") is None or not i.get("subtopics")
+            or "pe_subtopics" not in i or "law_subtopics" not in i)
 
 
 def lens(args) -> None:
@@ -398,8 +445,9 @@ def lens(args) -> None:
                 "role": "user",
                 "content": (
                     "Score each story below on all three lenses (privacy, "
-                    "security, law) and assign 1-3 security subtopics, per the "
-                    "system prompt. Return one entry per story, keyed by its id.\n\n"
+                    "security, law) and assign its security, privacy, and legal "
+                    "subtopics, per the system prompt. Return one entry per "
+                    "story, keyed by its id.\n\n"
                     f"{json.dumps(payload, indent=1)}"
                 ),
             }],
@@ -419,6 +467,8 @@ def lens(args) -> None:
             i[f"{k}_score"] = max(0, min(3, int(s[f"{k}_score"])))
             i[f"{k}_angle"] = (s.get(f"{k}_angle") or "").strip()
         i["subtopics"] = [t for t in s.get("subtopics", []) if t in SUBTOPICS]
+        i["pe_subtopics"] = [t for t in s.get("pe_subtopics", []) if t in PE_SUBTOPICS]
+        i["law_subtopics"] = [t for t in s.get("law_subtopics", []) if t in LAW_SUBTOPICS]
         updated += 1
     (ROOT / "data" / "items.json").write_text(json.dumps(items, indent=2) + "\n")
     print(f"scored {updated} item(s) on privacy/security/law + subtopics")
