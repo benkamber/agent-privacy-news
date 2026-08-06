@@ -16,5 +16,6 @@ LOG="logs/hunt-api-$(date +%F).log"
   echo "=== api hunt started $(date) ==="
   python3 scripts/fetch_feeds.py
   .venv/bin/python scripts/summarize.py run
+  ./scripts/deploy-cloudflare.sh || echo "deploy skipped (site not updated)"
   echo "=== api hunt finished $(date) ==="
 } >> "$LOG" 2>&1

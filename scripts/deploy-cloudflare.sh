@@ -14,6 +14,7 @@ set -euo pipefail
 ROOT="${0:A:h:h}"
 cd "$ROOT"
 [ -f .env ] && set -a && source .env && set +a
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"   # so cron can find node/npx
 
 .venv/bin/python scripts/newsdb.py build   # make sure ui/data.js is current
 

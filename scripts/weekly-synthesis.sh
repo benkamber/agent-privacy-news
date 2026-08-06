@@ -10,4 +10,5 @@ mkdir -p logs
 {
   echo "=== weekly synthesis $(date) ==="
   .venv/bin/python scripts/summarize.py synthesis
+  ./scripts/deploy-cloudflare.sh || echo "deploy skipped (site not updated)"
 } >> "logs/synthesis-$(date +%F).log" 2>&1
