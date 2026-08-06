@@ -151,10 +151,10 @@
   <h1>🕵️ Agent Privacy &amp; Security News</h1>
   <span class="sub" id="stats"></span>
   <div class="tools">
-    <span class="freshness" id="freshness"><span class="dot"></span><span>—</span></span>
+    <span class="freshness" id="freshness"><span class="dot"></span><span></span></span>
     <button class="scanbtn" id="scanBtn">↻ Scan now</button>
     <button class="scanbtn ghost" id="reportBtn"
-      title="Privacy-engineering report of only what's new since your last report — copy-paste ready">📋 Report</button>
+      title="Privacy-engineering report of only what's new since your last report, copy-paste ready">📋 Report</button>
   </div>
 </header>
 <section class="synthwrap" id="synthWrap"></section>
@@ -285,7 +285,7 @@
   async function runScan() {
     scanBtn.disabled = true; scanBtn.classList.add("busy");
     scanBtn.textContent = "⟳ Scanning…";
-    toast("Pulling feeds and summarizing with Claude — this takes ~1 minute.", true);
+    toast("Pulling feeds and summarizing with Claude. This takes about a minute.", true);
     try {
       const r = await fetch("/api/scan", { method: "POST" });
       const j = await r.json();
@@ -295,7 +295,7 @@
         return;
       }
       const m = (j.log || "").match(/(\d+) added/);
-      toast("Scan complete" + (m ? ` — ${m[1]} new stories` : "") + ". Reloading…", true);
+      toast("Scan complete" + (m ? `, ${m[1]} new stories` : "") + ". Reloading…", true);
       setTimeout(() => location.reload(), 1200);
     } catch (e) {
       toast("Scan error: " + e.message, false);
@@ -317,7 +317,7 @@
   document.getElementById("copyBtn").onclick = async () => {
     if (!lastMarkdown) return;
     try { await navigator.clipboard.writeText(lastMarkdown); toast("Copied markdown to clipboard.", false); }
-    catch { toast("Copy blocked by the browser — select the text and copy manually.", false); }
+    catch { toast("Copy blocked by the browser. Select the text and copy manually.", false); }
   };
   async function runTask(endpoint, title, busyMsg, btn) {
     const orig = btn.textContent;
@@ -390,7 +390,7 @@
       document.getElementById("synthToggle").onclick = () => { synthFull = !synthFull; renderSynth(); };
       document.getElementById("synthCopy").onclick = async () => {
         try { await navigator.clipboard.writeText(synthMd); toast("Copied synthesis markdown.", false); }
-        catch { toast("Copy blocked — select and copy manually.", false); }
+        catch { toast("Copy blocked. Select and copy manually.", false); }
       };
     }
     const up = document.getElementById("synthUpdate");
@@ -400,7 +400,7 @@
   async function updateSynth() {
     const up = document.getElementById("synthUpdate");
     if (up) { up.disabled = true; up.textContent = "⟳ Reading papers…"; }
-    toast("Synthesis reads each paper in full — this takes a few minutes.", true);
+    toast("Synthesis reads each paper in full. This takes a few minutes.", true);
     try {
       const r = await fetch("/api/synthesis", { method: "POST" });
       const j = await r.json();
