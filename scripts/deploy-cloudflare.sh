@@ -18,4 +18,6 @@ cd "$ROOT"
 .venv/bin/python scripts/newsdb.py build   # make sure ui/data.js is current
 
 PROJECT="${CF_PAGES_PROJECT:-agent-privacy-news}"
-npx wrangler pages deploy ui --project-name "$PROJECT" --commit-dirty=true
+# create the project on first run; a no-op (ignored error) once it exists
+npx wrangler pages project create "$PROJECT" --production-branch main 2>/dev/null || true
+npx wrangler pages deploy ui --project-name "$PROJECT" --branch main --commit-dirty=true
