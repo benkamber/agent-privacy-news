@@ -1,0 +1,26 @@
+# secrets. never commit
+.env
+
+# python
+.venv/
+__pycache__/
+*.pyc
+
+# claude code local config
+.claude/
+
+# runtime logs
+logs/
+
+# generated data (each install builds its own store)
+data/items.json
+data/feed-candidates.json
+data/triaged-items.json
+data/digests/*.md
+data/reports/*
+!data/digests/.gitkeep
+!data/reports/.gitkeep
+ui/data.js
+
+# scratch
+*.tmp

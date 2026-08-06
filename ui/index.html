@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Privacy News</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --ink: #1a1a1a; --muted: #6b6b66;
+    --line: #e4e4df; --accent: #7c5cff; --accent-ink: #ffffff;
+    --chip: #efeeea; --chip-on: #1a1a1a; --chip-on-ink: #ffffff;
+    --ok: #2e9e5b; --warn: #c98a1a; --stale: #cc4b37;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16161a; --panel: #1f1f25; --ink: #ebebe6; --muted: #9a9a94;
+      --line: #2e2e35; --accent: #9d85ff; --accent-ink: #16161a;
+      --chip: #2a2a31; --chip-on: #ebebe6; --chip-on-ink: #16161a;
+      --ok: #47c479; --warn: #e0a63c; --stale: #e56a55;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif;
+  }
+  header {
+    padding: 24px 24px 16px; border-bottom: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center;
+  }
+  header h1 { font-size: 21px; letter-spacing: -0.02em; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  .tools { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+  .freshness { display: flex; align-items: center; gap: 7px; font-size: 13px;
+               color: var(--muted); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); }
+  .dot.stale { background: var(--stale); }
+  .scanbtn {
+    border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink);
+    border-radius: 8px; padding: 7px 14px; font-size: 13.5px; font-weight: 600;
+    cursor: pointer; white-space: nowrap;
+  }
+  .scanbtn:hover { filter: brightness(1.07); }
+  .scanbtn:disabled { opacity: 0.6; cursor: default; filter: none; }
+  .scanbtn.busy { background: var(--panel); color: var(--muted); border-color: var(--line); }
+  .scanbtn.ghost { background: var(--panel); color: var(--accent); }
+  .scanhint { font-size: 12.5px; color: var(--muted); max-width: 260px; }
+  .scanhint code { background: var(--chip); padding: 1px 5px; border-radius: 4px; }
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none;
+           align-items: center; justify-content: center; z-index: 20; padding: 24px; }
+  .modal.show { display: flex; }
+  .modalbox { background: var(--bg); border: 1px solid var(--line); border-radius: 14px;
+              width: min(840px, 100%); max-height: 88vh; display: flex; flex-direction: column; }
+  .modalbar { display: flex; align-items: center; justify-content: space-between;
+              gap: 12px; padding: 13px 18px; border-bottom: 1px solid var(--line); }
+  .modalbar b { font-size: 15px; }
+  .modalbar button { border: 1px solid var(--line); background: var(--chip); color: var(--ink);
+                     border-radius: 7px; padding: 5px 11px; font-size: 13px; cursor: pointer; margin-left: 8px; }
+  #copyBtn { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .modalbody { padding: 4px 22px 22px; overflow-y: auto; }
+  .synthwrap { max-width: 1180px; margin: 0 auto; padding: 16px 24px 0; }
+  .synthpanel { background: var(--panel); border: 1px solid var(--line);
+                border-radius: 12px; padding: 14px 18px; }
+  .synthhead { display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+               justify-content: space-between; }
+  .synthtitle { font-size: 15px; font-weight: 600; display: flex; gap: 10px;
+                align-items: baseline; flex-wrap: wrap; }
+  .synthfresh { font-size: 12.5px; font-weight: 400; color: var(--muted);
+                display: inline-flex; align-items: center; gap: 6px; }
+  .synthctrls { display: flex; gap: 8px; align-items: center; }
+  .synthbody { margin-top: 10px; font-size: 13.5px; }
+  .synthbody.full { max-height: 460px; overflow-y: auto; padding-right: 6px; }
+  main { max-width: 1180px; margin: 0 auto; padding: 20px 24px 60px;
+         display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 28px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; align-items: center; }
+  .chip {
+    border: 1px solid var(--line); background: var(--chip); color: var(--ink);
+    border-radius: 999px; padding: 4px 12px; font-size: 13px; cursor: pointer;
+  }
+  .chip.on { background: var(--chip-on); color: var(--chip-on-ink); border-color: var(--chip-on); }
+  .lensbtn {
+    border: 1px solid var(--accent); background: var(--panel); color: var(--accent);
+    border-radius: 999px; padding: 4px 13px; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .lensbtn.on { background: var(--accent); color: var(--accent-ink); }
+  .pebadge { color: var(--accent); font-weight: 700; }
+  .peangle { margin-top: 8px; padding: 7px 11px; border-radius: 8px;
+             background: var(--chip); font-size: 13px; }
+  .peangle b { color: var(--accent); }
+  input[type=search] {
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+    border-radius: 8px; padding: 6px 10px; font-size: 14px; min-width: 200px;
+  }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 18px; margin-bottom: 12px;
+  }
+  .card h3 { font-size: 16px; line-height: 1.35; margin-bottom: 4px; }
+  .card h3 a { color: var(--ink); text-decoration: none; }
+  .card h3 a:hover { color: var(--accent); }
+  .meta { color: var(--muted); font-size: 12.5px; margin-bottom: 8px;
+          display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .tag { background: var(--chip); border-radius: 4px; padding: 1px 7px; font-size: 11.5px; }
+  .imp { color: var(--accent); font-weight: 600; letter-spacing: 1px; }
+  .angle { margin-top: 8px; padding-left: 10px; border-left: 3px solid var(--accent);
+           color: var(--muted); font-size: 13.5px; }
+  aside .panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px 20px; position: sticky; top: 16px;
+    max-height: calc(100vh - 40px); overflow-y: auto;
+  }
+  aside h2 { font-size: 15px; margin-bottom: 10px; }
+  aside select { margin-bottom: 12px; border: 1px solid var(--line); background: var(--chip);
+                 color: var(--ink); border-radius: 6px; padding: 4px 8px; font-size: 13px; }
+  .digest { font-size: 13.5px; }
+  .digest h1 { font-size: 16px; margin: 0 0 10px; }
+  .digest h2 { font-size: 14px; margin: 14px 0 6px; }
+  .digest p, .digest li { margin-bottom: 8px; }
+  .digest ul { padding-left: 18px; }
+  .digest a { color: var(--accent); }
+  .empty { color: var(--muted); padding: 40px 0; text-align: center; }
+  #toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    background: var(--chip-on); color: var(--chip-on-ink); padding: 11px 18px;
+    border-radius: 10px; font-size: 13.5px; box-shadow: 0 6px 24px rgba(0,0,0,.25);
+    opacity: 0; pointer-events: none; transition: opacity .2s; max-width: 90vw; z-index: 10;
+  }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🕵️ Agent Privacy News</h1>
+  <span class="sub" id="stats"></span>
+  <div class="tools">
+    <span class="freshness" id="freshness"><span class="dot"></span><span>—</span></span>
+    <button class="scanbtn" id="scanBtn">↻ Scan now</button>
+    <button class="scanbtn ghost" id="reportBtn"
+      title="Privacy-engineering report of only what's new since your last report — copy-paste ready">📋 Report</button>
+  </div>
+</header>
+<section class="synthwrap" id="synthWrap"></section>
+<main>
+  <section>
+    <div class="controls" id="controls">
+      <button class="lensbtn" id="lensBtn"
+        title="Show only stories relevant to building privacy capabilities for agentic AI, ranked by relevance">🔒 Privacy-eng lens</button>
+      <input type="search" id="q" placeholder="Search…">
+    </div>
+    <div id="list"></div>
+  </section>
+  <aside>
+    <div class="panel">
+      <h2>Daily digest</h2>
+      <select id="digestPick"></select>
+      <div class="digest" id="digest"></div>
+    </div>
+  </aside>
+</main>
+<div id="toast"></div>
+<div class="modal" id="modal">
+  <div class="modalbox">
+    <div class="modalbar">
+      <b id="modalTitle"></b>
+      <span>
+        <button id="copyBtn">Copy markdown</button>
+        <button id="closeBtn">✕</button>
+      </span>
+    </div>
+    <div class="modalbody digest" id="modalBody"></div>
+  </div>
+</div>
+<script src="data.js"></script>
+<script>
+(function () {
+  const D = window.NEWS_DATA || { items: [], digests: [], generated: null };
+  const TAGS = ["tools","mcp","a2a","polycloud","regulation","incident","research","product"];
+  const active = new Set();
+  let minImp = 1, query = "", lens = false;
+  const served = location.protocol === "http:" || location.protocol === "https:";
+
+  const esc = s => (s || "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+
+  function md(src) {
+    const inline = s => esc(s)
+      .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    let html = "", inList = false;
+    for (const line of (src || "").split("\n")) {
+      const t = line.trim();
+      const li = t.match(/^[-*] (.*)/);
+      if (li) { if (!inList) { html += "<ul>"; inList = true; } html += "<li>" + inline(li[1]) + "</li>"; continue; }
+      if (inList) { html += "</ul>"; inList = false; }
+      const h = t.match(/^(#{1,3}) (.*)/);
+      if (h) html += `<h${h[1].length}>` + inline(h[2]) + `</h${h[1].length}>`;
+      else if (t) html += "<p>" + inline(t) + "</p>";
+    }
+    if (inList) html += "</ul>";
+    return html;
+  }
+
+  // --- freshness ---
+  function ago(ts) {
+    if (!ts) return { rel: "never", label: "never scanned", cls: "stale", title: "" };
+    const then = new Date(ts);
+    if (isNaN(then)) return { rel: ts, label: ts, cls: "", title: "" };
+    const s = Math.max(0, (Date.now() - then) / 1000);
+    let rel;
+    if (s < 90) rel = "just now";
+    else if (s < 5400) rel = Math.round(s / 60) + " min ago";
+    else if (s < 129600) rel = Math.round(s / 3600) + " hr ago";
+    else rel = Math.round(s / 86400) + " days ago";
+    const cls = s < 86400 ? "ok" : s < 259200 ? "warn" : "stale";
+    return { rel, label: "Last scan: " + rel, cls, title: then.toLocaleString() };
+  }
+  function renderFreshness() {
+    const f = ago(D.generated);
+    const el = document.getElementById("freshness");
+    el.innerHTML = `<span class="dot ${f.cls}"></span><span>${esc(f.label)}</span>`;
+    el.title = f.title;
+  }
+
+  // --- scan button ---
+  const scanBtn = document.getElementById("scanBtn");
+  function toast(msg, sticky) {
+    const t = document.getElementById("toast");
+    t.textContent = msg; t.classList.add("show");
+    clearTimeout(toast._t);
+    if (!sticky) toast._t = setTimeout(() => t.classList.remove("show"), 4000);
+  }
+  async function runScan() {
+    scanBtn.disabled = true; scanBtn.classList.add("busy");
+    scanBtn.textContent = "⟳ Scanning…";
+    toast("Pulling feeds and summarizing with Claude — this takes ~1 minute.", true);
+    try {
+      const r = await fetch("/api/scan", { method: "POST" });
+      const j = await r.json();
+      if (!r.ok || !j.ok) {
+        toast("Scan failed: " + (j.error || "check the serve.py terminal for details"), false);
+        scanBtn.disabled = false; scanBtn.classList.remove("busy"); scanBtn.textContent = "↻ Scan now";
+        return;
+      }
+      const m = (j.log || "").match(/(\d+) added/);
+      toast("Scan complete" + (m ? ` — ${m[1]} new stories` : "") + ". Reloading…", true);
+      setTimeout(() => location.reload(), 1200);
+    } catch (e) {
+      toast("Scan error: " + e.message, false);
+      scanBtn.disabled = false; scanBtn.classList.remove("busy"); scanBtn.textContent = "↻ Scan now";
+    }
+  }
+  // --- report / synthesis modal ---
+  const modal = document.getElementById("modal");
+  const modalBody = document.getElementById("modalBody");
+  const reportBtn = document.getElementById("reportBtn");
+  let lastMarkdown = "";
+  const showModal = (title, html) => {
+    document.getElementById("modalTitle").textContent = title;
+    modalBody.innerHTML = html; modal.classList.add("show");
+  };
+  const closeModal = () => modal.classList.remove("show");
+  document.getElementById("closeBtn").onclick = closeModal;
+  modal.onclick = e => { if (e.target === modal) closeModal(); };
+  document.getElementById("copyBtn").onclick = async () => {
+    if (!lastMarkdown) return;
+    try { await navigator.clipboard.writeText(lastMarkdown); toast("Copied markdown to clipboard.", false); }
+    catch { toast("Copy blocked by the browser — select the text and copy manually.", false); }
+  };
+  async function runTask(endpoint, title, busyMsg, btn) {
+    const orig = btn.textContent;
+    btn.disabled = true; btn.classList.add("busy"); btn.textContent = "⟳ …";
+    lastMarkdown = ""; showModal(title, `<p class="empty">${busyMsg}</p>`);
+    try {
+      const r = await fetch(endpoint, { method: "POST" });
+      const j = await r.json();
+      if (!r.ok || !j.ok) { showModal(title, `<p class="empty">Failed: ${esc(j.error || "check the server terminal")}</p>`); return; }
+      lastMarkdown = j.markdown || "";
+      showModal(title, lastMarkdown ? md(lastMarkdown) : '<p class="empty">Nothing new to report.</p>');
+    } catch (e) {
+      showModal(title, `<p class="empty">Error: ${esc(e.message)}</p>`);
+    } finally {
+      btn.disabled = false; btn.classList.remove("busy"); btn.textContent = orig;
+    }
+  }
+
+  if (served) {
+    scanBtn.onclick = runScan;
+    reportBtn.onclick = () => runTask("/api/report",
+      "Privacy report — new since your last report",
+      "Generating the delta report…", reportBtn);
+    // If a task is already running (e.g. page reloaded mid-run), reflect it.
+    fetch("/api/status").then(r => r.json()).then(s => {
+      if (s.running) { scanBtn.disabled = true; scanBtn.classList.add("busy"); scanBtn.textContent = "⟳ Working…"; }
+    }).catch(() => {});
+  } else {
+    // Opened as a file:// page — no server to run tasks.
+    scanBtn.replaceWith(Object.assign(document.createElement("span"), {
+      className: "scanhint",
+      innerHTML: "Run <code>./scripts/ui.sh</code> and open the printed localhost URL to enable Scan / Report / Synthesis.",
+    }));
+    reportBtn.style.display = "none";
+  }
+
+  // --- weekly synthesis: persistent top panel ---
+  const synthWrap = document.getElementById("synthWrap");
+  let synthMd = (D.synthesis && D.synthesis.markdown) || "";
+  let synthGen = (D.synthesis && D.synthesis.generated) || null;
+  let synthFull = false;
+
+  function bigPicture(src) {
+    // Title + the "## The big picture" section only; fall back to the whole doc.
+    const lines = src.split("\n");
+    const title = lines.find(l => l.startsWith("# ")) || "";
+    const start = lines.findIndex(l => /^##\s+the big picture/i.test(l));
+    if (start < 0) return src;
+    let end = lines.length;
+    for (let i = start + 1; i < lines.length; i++) {
+      if (/^##\s/.test(lines[i])) { end = i; break; }
+    }
+    return [title, "", ...lines.slice(start, end)].join("\n");
+  }
+
+  function renderSynth() {
+    if (!synthMd) {
+      synthWrap.innerHTML = `<div class="synthpanel"><div class="synthhead">
+        <div class="synthtitle">🔬 Weekly Privacy-Engineering Synthesis
+          <span class="synthfresh">not generated yet</span></div>
+        <div class="synthctrls">${served
+          ? '<button class="scanbtn" id="synthUpdate">↻ Generate</button>'
+          : '<span class="scanhint">serve the UI to enable</span>'}</div></div>
+        <div class="synthbody digest"><p class="empty">A deep weekly briefing that reads every paper in full and maps developments to a privacy-by-design gap map — plain language, mechanism-level, with a "so what" for the capabilities team. Press Generate (reads the papers; ~1–2 min).</p></div></div>`;
+    } else {
+      const f = ago(synthGen);
+      const body = synthFull ? synthMd : bigPicture(synthMd);
+      synthWrap.innerHTML = `<div class="synthpanel"><div class="synthhead">
+        <div class="synthtitle">🔬 Weekly Privacy-Engineering Synthesis
+          <span class="synthfresh"><span class="dot ${f.cls}"></span>updated ${esc(f.rel)}</span></div>
+        <div class="synthctrls">
+          <button class="chip" id="synthToggle">${synthFull ? "Big picture ▴" : "Full synthesis ▾"}</button>
+          <button class="chip" id="synthCopy">Copy</button>
+          ${served ? '<button class="scanbtn" id="synthUpdate">↻ Update</button>' : ''}
+        </div></div>
+        <div class="synthbody digest ${synthFull ? "full" : ""}">${md(body)}</div></div>`;
+      document.getElementById("synthToggle").onclick = () => { synthFull = !synthFull; renderSynth(); };
+      document.getElementById("synthCopy").onclick = async () => {
+        try { await navigator.clipboard.writeText(synthMd); toast("Copied synthesis markdown.", false); }
+        catch { toast("Copy blocked — select and copy manually.", false); }
+      };
+    }
+    const up = document.getElementById("synthUpdate");
+    if (up) up.onclick = updateSynth;
+  }
+
+  async function updateSynth() {
+    const up = document.getElementById("synthUpdate");
+    if (up) { up.disabled = true; up.textContent = "⟳ Reading papers…"; }
+    toast("Synthesis reads each paper in full — this takes a few minutes.", true);
+    try {
+      const r = await fetch("/api/synthesis", { method: "POST" });
+      const j = await r.json();
+      if (!r.ok || !j.ok) { toast("Synthesis failed: " + (j.error || "see server terminal"), false); renderSynth(); return; }
+      synthMd = j.markdown || synthMd;
+      synthGen = new Date().toISOString();
+      synthFull = false;
+      toast("Synthesis updated.", false);
+      renderSynth();
+    } catch (e) {
+      toast("Synthesis error: " + e.message, false); renderSynth();
+    }
+  }
+
+  function render() {
+    let items = D.items.filter(i =>
+      i.importance >= minImp &&
+      (!active.size || i.tags.some(t => active.has(t))) &&
+      (!query || (i.title + i.summary + i.source + i.privacy_angle).toLowerCase().includes(query))
+    );
+    if (lens) {
+      items = items.filter(i => (i.pe_score || 0) >= 2)
+                   .sort((a, b) => (b.pe_score - a.pe_score) || (b.importance - a.importance));
+    }
+    document.getElementById("stats").textContent = lens
+      ? `${items.length} privacy-eng stories`
+      : `${items.length} of ${D.items.length} stories`;
+    document.getElementById("list").innerHTML = items.length ? items.map(i => `
+      <article class="card">
+        <h3><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.title)}</a></h3>
+        <div class="meta">
+          <span class="imp">${"●".repeat(i.importance)}${"○".repeat(5 - i.importance)}</span>
+          ${lens ? `<span class="pebadge">🔒 ${i.pe_score}/3</span>` : ""}
+          <span>${esc(i.source)}</span><span>${esc(i.published || "date unknown")}</span>
+          ${i.tags.map(t => `<span class="tag">${t}</span>`).join("")}
+        </div>
+        <div>${esc(i.summary)}</div>
+        <div class="angle">${esc(i.privacy_angle)}</div>
+        ${lens && i.pe_angle ? `<div class="peangle"><b>For privacy engineers:</b> ${esc(i.pe_angle)}</div>` : ""}
+      </article>`).join("")
+      : (lens
+          ? '<div class="empty">No privacy-engineering stories match — loosen filters or run a scan.</div>'
+          : '<div class="empty">No stories match — run a scan or loosen filters.</div>');
+  }
+
+  let refreshDigest = () => {};
+  const lensBtn = document.getElementById("lensBtn");
+  lensBtn.onclick = () => {
+    lens = !lens; lensBtn.classList.toggle("on", lens);
+    render(); refreshDigest();
+  };
+
+  const controls = document.getElementById("controls");
+  TAGS.forEach(t => {
+    const b = document.createElement("button");
+    b.className = "chip"; b.textContent = t;
+    b.onclick = () => { active.has(t) ? active.delete(t) : active.add(t);
+                        b.classList.toggle("on"); render(); };
+    controls.appendChild(b);
+  });
+  const impBtn = document.createElement("button");
+  impBtn.className = "chip"; impBtn.textContent = "importance ≥ 1";
+  impBtn.onclick = () => { minImp = minImp >= 5 ? 1 : minImp + 1;
+                           impBtn.textContent = "importance ≥ " + minImp;
+                           impBtn.classList.toggle("on", minImp > 1); render(); };
+  controls.appendChild(impBtn);
+  document.getElementById("q").oninput = e => { query = e.target.value.toLowerCase(); render(); };
+
+  const pick = document.getElementById("digestPick");
+  if (D.digests.length) {
+    D.digests.forEach((d, i) => pick.add(new Option(d.date, i)));
+    refreshDigest = () => {
+      const d = D.digests[pick.value || 0];
+      // When the lens is on and this day has a privacy-eng variant, show it.
+      const src = (lens && d.pe_markdown) ? d.pe_markdown : d.markdown;
+      document.getElementById("digest").innerHTML = md(src);
+    };
+    pick.onchange = refreshDigest;
+    refreshDigest();
+  } else {
+    pick.style.display = "none";
+    document.getElementById("digest").innerHTML = '<p class="empty">No digest yet.</p>';
+  }
+  renderFreshness();
+  renderSynth();
+  render();
+})();
+</script>
+</body>
+</html>
