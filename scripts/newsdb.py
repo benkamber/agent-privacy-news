@@ -240,7 +240,7 @@ def _build_methodology_page() -> None:
 
   <section>
     <h2>The sources</h2>
-    <p>The full register, kept in the open. Each daily run reads these feeds plus the query APIs below, keyword-filters for agentic-AI privacy, security, and legal relevance, then an AI pass selects and summarizes what is genuinely new.</p>
+    <p>The full register, kept in the open. Each daily run reads these feeds plus the query APIs below, then an AI pass selects and summarizes what is genuinely new. Most feeds are keyword-filtered first for agentic-AI privacy, security, and legal relevance. Primary regulator and standards feeds skip that gate and go straight to the AI pass, since their wording rarely says "agent".</p>
     {groups}
   </section>
 

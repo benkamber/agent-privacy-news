@@ -75,17 +75,31 @@ _BUILTIN_FEEDS = [
 ]
 
 
+# Prefilter modes per feed (the `prefilter` field in sources.json):
+#   both  (default): keep an item only if it matches an AGENT term AND a RISK term.
+#   loose: keep on a RISK term alone. For primary regulator/standards feeds whose
+#          items rarely say "agent" ("general-purpose AI", "automated decision");
+#          triage makes the final agentic-relevance call.
+#   off  : no keyword gate. For low-volume release/spec atoms where every item counts.
+_MODES = ("both", "loose", "off")
+
+
 def _load_feeds():
-    """Prefer the source register (data/sources.json); fall back to the built-in list."""
+    """Prefer the source register (data/sources.json); fall back to the built-in list.
+    Returns (name, url, prefilter_mode) tuples."""
     reg = ROOT / "data" / "sources.json"
     try:
-        feeds = [(f["name"], f["url"])
-                 for f in json.loads(reg.read_text()).get("feeds", []) if f.get("url")]
+        feeds = []
+        for f in json.loads(reg.read_text()).get("feeds", []):
+            if not f.get("url"):
+                continue
+            mode = f.get("prefilter", "both")
+            feeds.append((f["name"], f["url"], mode if mode in _MODES else "both"))
         if feeds:
             return feeds
     except Exception as e:
         print(f"  sources.json unreadable ({e}); using built-in feed list")
-    return _BUILTIN_FEEDS
+    return [(n, u, "both") for (n, u) in _BUILTIN_FEEDS]
 
 
 FEEDS = _load_feeds()
@@ -99,10 +113,12 @@ ARXIV_QUERIES = [
 
 HN_QUERIES = ["MCP security", "agent privacy", "prompt injection", "AI agent security"]
 
-# candidate must match (AGENT terms) AND (RISK terms)
+# candidate must match (AGENT terms) AND (RISK terms), except for loose/off feeds
 AGENT_RE = re.compile(
     r"\b(agent|agentic|mcp|model context protocol|a2a|copilot|claude|gpt|llm|"
-    r"assistant|tool.?call|autonomous ai|computer.?use)\b", re.I)
+    r"assistant|tool.?call|tool use|function.?call|autonomous ai|computer.?use|"
+    r"general.purpose ai|gpai|automated decision|ai system|ai model|"
+    r"foundation model|frontier model)\b", re.I)
 RISK_RE = re.compile(
     r"\b(privac|security|vulnerab|exploit|inject|exfiltrat|leak|breach|cve|"
     r"credential|consent|gdpr|ai act|compliance|residency|sovereign|identity|"
@@ -165,14 +181,17 @@ def collect():
 
     candidates, errors = [], []
 
-    def add(source, title, link, date, blurb):
+    def add(source, title, link, date, blurb, mode="both"):
         if link.rstrip("/") in known:
             return
         if date and date < cutoff:
             return
         text = f"{title} {blurb}"
-        if not (AGENT_RE.search(text) and RISK_RE.search(text)):
+        if mode == "both" and not (AGENT_RE.search(text) and RISK_RE.search(text)):
             return
+        if mode == "loose" and not RISK_RE.search(text):
+            return
+        # mode == "off": no keyword gate; recency + dedupe still apply.
         candidates.append({
             "source": source,
             "title": title,
@@ -182,16 +201,16 @@ def collect():
         })
 
     def pull(feed):
-        name, url = feed
-        return name, list(parse_feed(get(url)))
+        name, url, mode = feed
+        return name, mode, list(parse_feed(get(url)))
 
     with cf.ThreadPoolExecutor(max_workers=10) as ex:
         futures = {ex.submit(pull, f): f[0] for f in FEEDS}
         for fut in cf.as_completed(futures):
             try:
-                name, entries = fut.result()
+                name, mode, entries = fut.result()
                 for title, link, date, blurb in entries:
-                    add(name, title, link, date, blurb)
+                    add(name, title, link, date, blurb, mode)
             except Exception as e:
                 errors.append(f"{futures[fut]}: {type(e).__name__}: {e}")
 
