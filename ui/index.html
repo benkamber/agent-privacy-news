@@ -146,6 +146,7 @@
   .digest p, .digest li { margin-bottom: 8px; }
   .digest ul { padding-left: 18px; }
   .digest a { color: var(--accent); }
+  .cut { font-size: 12px; font-weight: 400; color: var(--muted); }
   .empty { color: var(--muted); padding: 40px 0; text-align: center; }
   #toast {
     position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
@@ -197,7 +198,7 @@
   </section>
   <aside>
     <div class="panel">
-      <h2>Daily digest</h2>
+      <h2>Daily digest <span class="cut" id="digestCut"></span></h2>
       <select id="digestPick"></select>
       <div class="digest" id="digest"></div>
     </div>
@@ -228,9 +229,19 @@
   const D = window.NEWS_DATA || { items: [], digests: [], generated: null };
   const TAGS = ["tools","mcp","a2a","polycloud","regulation","incident","research","product"];
   const LENSES = {
-    pe:  { label: "🔒 Privacy",  name: "privacy",  score: "pe_score",  angle: "pe_angle",  note: "For privacy engineers" },
-    sec: { label: "🛡 Security", name: "security", score: "sec_score", angle: "sec_angle", note: "For security teams" },
-    law: { label: "⚖ Law",      name: "law",      score: "law_score", angle: "law_angle", note: "Legal angle" },
+    pe:  { label: "🔒 Privacy",  name: "privacy",  score: "pe_score",  angle: "pe_angle",  note: "For privacy engineers", digest: "pe_markdown",  synth: "privacy" },
+    sec: { label: "🛡 Security", name: "security", score: "sec_score", angle: "sec_angle", note: "For security teams",    digest: "sec_markdown", synth: "security" },
+    law: { label: "⚖ Law",      name: "law",      score: "law_score", angle: "law_angle", note: "Legal angle",          digest: "law_markdown", synth: "legal" },
+  };
+  // Weekly deep synthesis, one per lens. Privacy runs automatically; security and
+  // legal are generated on demand. Keys match D.synthesis and summarize --lens.
+  const SYNTH_META = {
+    privacy:  { emoji: "🔬", label: "Privacy-Engineering", auto: true,
+                blurb: 'A deep weekly briefing that reads every paper in full and maps developments to a privacy-by-design gap map.' },
+    security: { emoji: "🛡", label: "Security", auto: false,
+                blurb: 'A deep briefing that reads every paper and maps the agentic attack surface to a defense gap map.' },
+    legal:    { emoji: "⚖", label: "Legal & Governance", auto: false,
+                blurb: 'A deep briefing that reads every source and maps developments to an obligation and legal-risk map.' },
   };
   const SUBTOPICS = ["prompt-injection","data-exfiltration","supply-chain","identity-auth",
                      "sandbox-escape","memory-poisoning","vulnerability","red-teaming",
@@ -389,10 +400,15 @@
     renderSynth();
   }).catch(() => { /* no local server: read-only site */ });
 
-  // --- weekly synthesis: persistent top panel ---
+  // --- weekly synthesis: persistent top panel, one briefing per lens ---
   const synthWrap = document.getElementById("synthWrap");
-  let synthMd = (D.synthesis && D.synthesis.markdown) || "";
-  let synthGen = (D.synthesis && D.synthesis.generated) || null;
+  const synthStore = (D.synthesis && typeof D.synthesis === "object") ? D.synthesis : {};
+
+  // Which lens the panel shows: the single active lens, else privacy (the auto one).
+  function synthLensKey() {
+    const ls = lensList();
+    return ls.length === 1 ? LENSES[ls[0]].synth : "privacy";
+  }
 
   function bigPicture(src) {
     // Title + the "## The big picture" section only; fall back to the whole doc.
@@ -407,51 +423,61 @@
     return [title, "", ...lines.slice(start, end)].join("\n");
   }
 
+  function absDate(ts) {
+    const d = new Date(ts);
+    return isNaN(d) ? "" : d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  }
+
   function renderSynth() {
-    if (!synthMd) {
+    const key = synthLensKey();
+    const meta = SYNTH_META[key];
+    const entry = synthStore[key] || null;
+    const title = `${meta.emoji} Weekly ${meta.label} Synthesis`;
+    if (!entry || !entry.markdown) {
+      const why = meta.auto
+        ? "Runs automatically each week."
+        : (apiUp ? "Generate it on demand; it costs a few minutes and about a dollar."
+                 : "Not generated yet. Select this lens on the local app to generate it.");
       synthWrap.innerHTML = `<div class="synthpanel"><div class="synthhead">
-        <div class="synthtitle">🔬 Weekly Privacy-Engineering Synthesis
-          <span class="synthfresh">not generated yet</span></div>
+        <div class="synthtitle">${esc(title)}
+          <span class="synthfresh">${meta.label} lens · not generated yet</span></div>
         <div class="synthctrls">${apiUp
-          ? '<button class="scanbtn" id="synthUpdate">↻ Generate</button>' : ''}</div></div>
-        <div class="synthbody digest"><p class="empty">A deep weekly briefing that reads every paper in full and maps developments to a privacy-by-design gap map. Plain language, mechanism-level, with a "so what" for the capabilities team. Reading the papers takes about a minute or two.</p></div></div>`;
+          ? `<button class="scanbtn" id="synthUpdate">↻ Generate</button>` : ''}</div></div>
+        <div class="synthbody digest"><p class="empty">${esc(meta.blurb)} Plain language, mechanism-level, with a "so what" for the team. ${esc(why)}</p></div></div>`;
     } else {
-      const f = ago(synthGen);
-      // Panel shows the big-picture summary. "Full synthesis" opens the whole
-      // document in the modal, so the two views are clearly different.
+      const f = ago(entry.generated);
       synthWrap.innerHTML = `<div class="synthpanel"><div class="synthhead">
-        <div class="synthtitle">🔬 Weekly Privacy-Engineering Synthesis
-          <span class="synthfresh"><span class="dot ${f.cls}"></span>updated ${esc(f.rel)}</span></div>
+        <div class="synthtitle">${esc(title)}
+          <span class="synthfresh">${meta.label} lens · <span class="dot ${f.cls}"></span>run ${esc(absDate(entry.generated))} (${esc(f.rel)})</span></div>
         <div class="synthctrls">
           <button class="scanbtn ghost" id="synthFullBtn">Read full synthesis</button>
           <button class="chip" id="synthCopy">Copy</button>
-          ${apiUp ? '<button class="scanbtn" id="synthUpdate">↻ Update</button>' : ''}
+          ${apiUp ? `<button class="scanbtn" id="synthUpdate">↻ Update</button>` : ''}
         </div></div>
-        <div class="synthbody digest">${md(bigPicture(synthMd))}</div></div>`;
+        <div class="synthbody digest">${md(bigPicture(entry.markdown))}</div></div>`;
       document.getElementById("synthFullBtn").onclick = () => {
-        lastMarkdown = synthMd;
-        showModal("Weekly Privacy-Engineering Synthesis", md(synthMd));
+        lastMarkdown = entry.markdown;
+        showModal(title, md(entry.markdown));
       };
       document.getElementById("synthCopy").onclick = async () => {
-        try { await navigator.clipboard.writeText(synthMd); toast("Copied synthesis markdown.", false); }
+        try { await navigator.clipboard.writeText(entry.markdown); toast("Copied synthesis markdown.", false); }
         catch { toast("Copy blocked. Select and copy manually.", false); }
       };
     }
     const up = document.getElementById("synthUpdate");
-    if (up) up.onclick = updateSynth;
+    if (up) up.onclick = () => updateSynth(key);
   }
 
-  async function updateSynth() {
+  async function updateSynth(key) {
     const up = document.getElementById("synthUpdate");
     if (up) { up.disabled = true; up.textContent = "⟳ Reading papers…"; }
-    toast("Synthesis reads each paper in full. This takes a few minutes.", true);
+    toast(`${SYNTH_META[key].label} synthesis reads each paper in full. This takes a few minutes.`, true);
     try {
-      const r = await fetch("/api/synthesis", { method: "POST" });
+      const r = await fetch("/api/synthesis?lens=" + encodeURIComponent(key), { method: "POST" });
       const j = await r.json();
       if (!r.ok || !j.ok) { toast("Synthesis failed: " + (j.error || "see server terminal"), false); renderSynth(); return; }
-      synthMd = j.markdown || synthMd;
-      synthGen = new Date().toISOString();
-      toast("Synthesis updated.", false);
+      synthStore[key] = { markdown: j.markdown || "", generated: new Date().toISOString() };
+      toast(`${SYNTH_META[key].label} synthesis updated.`, false);
       renderSynth();
     } catch (e) {
       toast("Synthesis error: " + e.message, false); renderSynth();
@@ -562,7 +588,7 @@
     b.onclick = () => {
       activeLenses.has(key) ? activeLenses.delete(key) : activeLenses.add(key);
       b.classList.toggle("on");
-      render(); refreshDigest();
+      render(); refreshDigest(); renderSynth();
     };
     lensButtons[key] = b; lensGroup.appendChild(b);
   });
@@ -606,8 +632,15 @@
     D.digests.forEach((d, i) => pick.add(new Option(d.date, i)));
     refreshDigest = () => {
       const d = D.digests[pick.value || 0];
-      // When the lens is on and this day has a privacy-eng variant, show it.
-      const src = (activeLenses.has("pe") && d.pe_markdown) ? d.pe_markdown : d.markdown;
+      const ls = lensList();
+      // One lens active with a cut for this day -> show it; else the general digest.
+      let src = d.markdown, cut = "";
+      if (ls.length === 1) {
+        const L = LENSES[ls[0]];
+        if (d[L.digest]) { src = d[L.digest]; cut = L.label; }
+      }
+      const cutEl = document.getElementById("digestCut");
+      if (cutEl) cutEl.textContent = cut ? `· ${cut} cut` : (ls.length > 1 ? "· cross-cutting" : "· all lenses");
       document.getElementById("digest").innerHTML = md(src);
     };
     pick.onchange = refreshDigest;

@@ -265,24 +265,33 @@ def build() -> None:
     items = load_items()
     digests = []
     if DIGESTS.exists():
-        # general digests are YYYY-MM-DD.md; the privacy-eng variant, if present,
-        # is YYYY-MM-DD.pe.md and rides along on the same entry.
-        general = sorted((f for f in DIGESTS.glob("*.md") if not f.name.endswith(".pe.md")),
+        # general digests are YYYY-MM-DD.md; the per-lens variants, if present,
+        # are YYYY-MM-DD.{pe,sec,law}.md and ride along on the same entry.
+        variants = (("pe", "pe_markdown"), ("sec", "sec_markdown"), ("law", "law_markdown"))
+        suffixes = tuple(f".{s}.md" for s, _ in variants)
+        general = sorted((f for f in DIGESTS.glob("*.md") if not f.name.endswith(suffixes)),
                          reverse=True)
         for f in general:
             entry = {"date": f.stem, "markdown": f.read_text()}
-            pe = DIGESTS / f"{f.stem}.pe.md"
-            if pe.exists():
-                entry["pe_markdown"] = pe.read_text()
+            for suf, key in variants:
+                v = DIGESTS / f"{f.stem}.{suf}.md"
+                if v.exists():
+                    entry[key] = v.read_text()
             digests.append(entry)
-    synth = None
-    syn_file = ROOT / "data" / "reports" / "latest-synthesis.md"
-    if syn_file.exists():
-        synth = {
-            "markdown": syn_file.read_text(),
-            "generated": datetime.fromtimestamp(
-                syn_file.stat().st_mtime).isoformat(timespec="seconds"),
-        }
+    # Per-lens weekly syntheses. Privacy runs on the weekly cron; security and
+    # legal are generated on demand. Keyed by lens so the UI panel can tab across.
+    synth = {}
+    for lens, fname in (("privacy", "latest-synthesis.md"),
+                        ("security", "latest-synthesis.sec.md"),
+                        ("legal", "latest-synthesis.law.md")):
+        p = ROOT / "data" / "reports" / fname
+        if p.exists():
+            synth[lens] = {
+                "markdown": p.read_text(),
+                "generated": datetime.fromtimestamp(
+                    p.stat().st_mtime).isoformat(timespec="seconds"),
+            }
+    synth = synth or None
     payload = {
         "generated": datetime.now().isoformat(timespec="seconds"),
         "items": items,

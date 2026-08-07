@@ -20,6 +20,7 @@ import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
 UI = ROOT / "ui"
@@ -69,11 +70,21 @@ def run_summarize(subcmd: list, name: str, read_file: str) -> dict:
             "markdown": f.read_text() if f.exists() else ""}
 
 
+_SYNTH_SUFFIX = {"privacy": "", "security": ".sec", "legal": ".law"}
+
+
+def _synthesis_task(params: dict) -> dict:
+    lens = params.get("lens", "privacy")
+    if lens not in _SYNTH_SUFFIX:
+        lens = "privacy"
+    return run_summarize(["synthesis", "--lens", lens], f"synthesis:{lens}",
+                         f"data/reports/latest-synthesis{_SYNTH_SUFFIX[lens]}.md")
+
+
 POST_TASKS = {
-    "/api/scan": lambda: do_scan(),
-    "/api/report": lambda: run_summarize(["report"], "report", "data/reports/latest.md"),
-    "/api/synthesis": lambda: run_summarize(["synthesis"], "synthesis",
-                                            "data/reports/latest-synthesis.md"),
+    "/api/scan": lambda params: do_scan(),
+    "/api/report": lambda params: run_summarize(["report"], "report", "data/reports/latest.md"),
+    "/api/synthesis": _synthesis_task,
 }
 
 
@@ -111,15 +122,16 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_POST(self) -> None:
-        path = self.path.split("?")[0]
-        task = POST_TASKS.get(path)
+        parsed = urlparse(self.path)
+        task = POST_TASKS.get(parsed.path)
         if task is None:
             return self._json(404, {"error": "not found"})
+        params = {k: v[0] for k, v in parse_qs(parsed.query).items()}
         if not _scan_lock.acquire(blocking=False):
             return self._json(409, {"ok": False, "error": "a task is already running"})
         _scanning["on"] = True
         try:
-            result = task()
+            result = task(params)
         finally:
             _scanning["on"] = False
             _scan_lock.release()

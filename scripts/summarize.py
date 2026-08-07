@@ -256,7 +256,14 @@ benefit tails (", making it easier to scale", ", ensuring consistency") — end 
 sentence. (15) concessive openers staging balance ("While X, Y", "Although X,
 Y"). (16) connective spam (Additionally, Furthermore, Moreover, Overall); however
 at most once. (17) audience-flattering conditionals. (18) colon titles ("X: Why Y
-Matters").
+Matters"). (19) standalone thesis pronouncements and aphoristic one-liners,
+opening OR closing a paragraph: a short declarative that states a sweeping theme
+("The control point has moved", "Eval infrastructure has become an offensive
+platform"), or an imperative that reads as a maxim ("Treat it like a red team",
+"Put the money on egress control", "Assume breach"). State the specific fact and
+who it affects instead. (20) grandiose reframing ("that should reset how we
+think about X", "X is the real problem", "this changes everything", "the ground
+has shifted"). Name the concrete development and its consequence, no more.
 
 Open on substance, close on the last real point: no throat-clearing, no wrap-up,
 no next-steps offer. In long output, re-apply these rules at every section.
@@ -527,6 +534,74 @@ def _gen_digest(client, user_prompt: str, label: str, max_tokens: int = 6000) ->
     return next(b.text for b in response.content if b.type == "text").strip() + "\n"
 
 
+# Per-lens daily digest cuts. Each rides the same day's items, filtered and
+# ranked by that lens's score, so the UI's privacy/security/legal toggles each
+# show a tailored digest instead of the shared general one.
+LENS_DIGEST_CFG = {
+    "pe": {
+        "score": "pe_score", "angle": "pe_angle",
+        "title": "Privacy-Eng Digest",
+        "audience": "a privacy engineer building privacy capabilities into agentic systems",
+        "tldr": "what today's news means for that work (what to build or watch)",
+        "lead": "leading with the concrete capability or control it informs "
+                "(consent/permission UX, PII redaction, memory/identity isolation, "
+                "differential privacy, data residency, agent auth, DLP/governance). "
+                "Use the angle as your guide; be specific about the control, not the attack",
+    },
+    "sec": {
+        "score": "sec_score", "angle": "sec_angle",
+        "title": "Security Digest",
+        "audience": "a security engineer or analyst defending agentic systems",
+        "tldr": "what today's news means for defense (what to detect, patch, or harden)",
+        "lead": "leading with the concrete defensive action or threat it informs "
+                "(a detection, a flaw to patch, an attack to defend against, a "
+                "hardening or red-team technique, incident response). Use the angle "
+                "as your guide; be specific about the defense or the threat",
+    },
+    "law": {
+        "score": "law_score", "angle": "law_angle",
+        "title": "Legal & Governance Digest",
+        "audience": "a legal, policy, or compliance professional tracking agentic AI",
+        "tldr": "what today's news means for compliance and legal risk (what to advise on or watch)",
+        "lead": "leading with the concrete obligation, risk, or development it raises "
+                "(a regulation, enforcement action, ruling, liability question, "
+                "disclosure duty, or standard). Use the angle as your guide; be "
+                "specific about the legal implication",
+    },
+}
+
+
+def _lens_digest(client, day: str, items: list, suffix: str, cfg: dict) -> None:
+    """Write one lens-specific daily digest ({day}.{suffix}.md), or drop a stale
+    one when no item clears the lens this run."""
+    score = cfg["score"]
+    sel = sorted((i for i in items if (i.get(score) or 0) >= 2),
+                 key=lambda i: (i[score], i["importance"]), reverse=True)
+    path = ROOT / "data" / "digests" / f"{day}.{suffix}.md"
+    if not sel:
+        if path.exists():
+            path.unlink()
+        return
+    view = [{"title": i["title"], "url": i["url"], "source": i["source"],
+             "published": i["published"], "score": i[score],
+             "angle": i.get(cfg["angle"], ""), "summary": i["summary"]} for i in sel]
+    prompt = (
+        f"Write a CONCISE {cfg['title'].lower()} for {day}, for {cfg['audience']}. "
+        "Output ONLY the markdown document, no preamble:\n"
+        f"- `# {cfg['title']}, {day}`\n"
+        f"- A bold **TL;DR:** 2-3 short sentences on {cfg['tldr']}, with inline "
+        "markdown links on the 2-4 most relevant stories.\n"
+        "- `## What to watch`: the items below (already ranked by relevance). One "
+        "bullet each: the bolded linked title, then `(Source)`, then a period, then "
+        f"one sentence {cfg['lead']}.\n"
+        "Keep it tight. Use only URLs present in the items. No fluff.\n\n"
+        f"Items (ranked):\n{json.dumps(view, indent=1)}"
+    )
+    md = _gen_digest(client, prompt, f"digest:{suffix}")
+    path.write_text(md)
+    print(f"{suffix} digest -> data/digests/{day}.{suffix}.md")
+
+
 def digest(args) -> None:
     day = args.date or date.today().isoformat()
     cutoff = (date.fromisoformat(day) - timedelta(days=args.days - 1)).isoformat()
@@ -563,38 +638,10 @@ def digest(args) -> None:
     (ROOT / "data" / "digests" / f"{day}.md").write_text(general)
     print(f"digest -> data/digests/{day}.md")
 
-    # 2) Privacy-eng digest — same day, filtered/ranked by the pe lens.
-    pe_items = sorted((i for i in items if (i.get("pe_score") or 0) >= 2),
-                      key=lambda i: (i["pe_score"], i["importance"]), reverse=True)
-    pe_path = ROOT / "data" / "digests" / f"{day}.pe.md"
-    if pe_items:
-        pe_view = [{"title": i["title"], "url": i["url"], "source": i["source"],
-                    "published": i["published"], "pe_score": i["pe_score"],
-                    "pe_angle": i["pe_angle"], "summary": i["summary"]}
-                   for i in pe_items]
-        pe_prompt = (
-            f"Write a CONCISE privacy-engineering digest for {day}, for a privacy "
-            "engineer building privacy capabilities into agentic systems. Output "
-            "ONLY the markdown document, no preamble:\n"
-            f"- `# Privacy-Eng Digest, {day}`\n"
-            "- A bold **TL;DR:** 2-3 short sentences on what today's news means for "
-            "that work (what to build or watch), with inline markdown "
-            "links on the 2-4 most relevant stories.\n"
-            "- `## What to watch`: the items below (already ranked by relevance). "
-            "One bullet each: the bolded linked title, then `(Source)`, then a "
-            "period, then one sentence leading "
-            "with the concrete capability or control it informs (consent/permission "
-            "UX, PII redaction, memory/identity isolation, differential privacy, "
-            "data residency, agent auth, DLP/governance, etc.). Use the pe_angle as "
-            "your guide; be specific about the control, not the attack.\n"
-            "Keep it tight. Use only URLs present in the items. No fluff.\n\n"
-            f"Items (ranked):\n{json.dumps(pe_view, indent=1)}"
-        )
-        pe_md = _gen_digest(client, pe_prompt, "digest:pe")
-        pe_path.write_text(pe_md)
-        print(f"privacy-eng digest -> data/digests/{day}.pe.md")
-    elif pe_path.exists():
-        pe_path.unlink()  # no pe-relevant items this run; drop a stale variant
+    # 2) Per-lens cuts — privacy, security, legal — each filtered/ranked by its
+    # own lens score so the UI toggles show a tailored digest.
+    for suffix, cfg in LENS_DIGEST_CFG.items():
+        _lens_digest(client, day, items, suffix, cfg)
 
     newsdb.build()
 
@@ -680,20 +727,103 @@ def _arxiv_fulltext(url: str):
     return f"https://arxiv.org/html/{m.group(1)}" if m else None
 
 
+SEC_SYNTH_RUBRIC = """\
+Security defense-posture lens. Evaluate the window's developments across the
+agentic-AI attack surface and the defenses for it, asking for each: what did the
+field actually ship this window, and what is still missing?
+Attack surface: prompt / tool / data injection, data and credential
+exfiltration, supply chain (malicious or typosquatted MCP servers, poisoned
+deps), agent identity and delegation, sandbox and isolation escape, memory and
+state poisoning, model-level attacks.
+Defense categories: PREVENT (input/output mediation, least-privilege tool
+scopes, signing and provenance), DETECT (monitoring, DLP, anomaly and injection
+detection, tracing), RESPOND (containment, revocation, incident playbooks),
+HARDEN (secure architecture, sandboxing, allowlists), ASSURE (red-teaming,
+evals, benchmarks).
+"What not to trust" = controls the window's evidence shows are weak: prompt-based
+guardrails that injection defeats, allowlists that miss indirect paths, detection
+with no ground truth, claims unbacked by a working repro."""
+
+LAW_SYNTH_RUBRIC = """\
+Legal and governance lens. Evaluate the window's developments across the regimes
+that bind agentic AI, asking for each regime: what became settled or enforceable
+this window, and what is still open?
+Regimes: the EU AI Act (obligations, timelines, implementing acts), GDPR and EU
+data protection, US state privacy (CCPA/CPRA and others), FTC and US federal
+enforcement, liability and who answers for an agent's acts, cross-border
+transfer, sector rules (health, finance), disclosure and transparency duties,
+and formal standards (NIST, ISO).
+"What to flag to counsel" = the highest legal-risk patterns this window surfaces,
+and any safe-harbor or compliance claim the evidence shows is overstated."""
+
+# Per-lens weekly synthesis. Privacy runs on the weekly cron; security and legal
+# are generated on demand (button or CLI --lens). suffix "" keeps privacy at the
+# original latest-synthesis.md path for backward compatibility.
+SYNTH_CFG = {
+    "privacy": {
+        "score": "pe_score", "angle": "pe_angle", "suffix": "",
+        "rubric": GUARDIAN_RUBRIC, "title": "Privacy Engineering Synthesis",
+        "audience": "a privacy engineering MANAGER leading a privacy-capabilities team",
+        "sowhat": "the concrete implication for a privacy-capabilities team's roadmap",
+        "map_head": "Privacy-by-Design gap map",
+        "map_body": "for each Hoepman strategy and for data-subject rights (see the "
+            "rubric in the system prompt), a bullet in the form `**STRATEGY** shipped "
+            "this window: …; still missing: …`. This is the 'where we need solutions' "
+            "section. Be specific about the gaps",
+        "closer_head": "What The Guardian would veto",
+        "closer_body": "patterns or technologies this window's evidence says a "
+            "privacy team should refuse to adopt, and why",
+    },
+    "security": {
+        "score": "sec_score", "angle": "sec_angle", "suffix": ".sec",
+        "rubric": SEC_SYNTH_RUBRIC, "title": "Security Synthesis",
+        "audience": "a security engineering lead defending agentic systems",
+        "sowhat": "the concrete implication for a defense roadmap: what to detect, "
+            "patch, or harden",
+        "map_head": "Defense gap map",
+        "map_body": "for each defense category in the rubric (PREVENT, DETECT, "
+            "RESPOND, HARDEN, ASSURE), a bullet in the form `**CATEGORY** shipped "
+            "this window: …; still missing: …`. Be specific about the gaps and the "
+            "attack classes still uncovered",
+        "closer_head": "What not to trust",
+        "closer_body": "controls, tools, or claims this window's evidence shows are "
+            "weak or defeated, and why a defender should not rely on them",
+    },
+    "legal": {
+        "score": "law_score", "angle": "law_angle", "suffix": ".law",
+        "rubric": LAW_SYNTH_RUBRIC, "title": "Legal & Governance Synthesis",
+        "audience": "a legal or policy lead advising an organization on agentic AI",
+        "sowhat": "the concrete implication for compliance and legal-risk posture: "
+            "what to advise, document, or watch",
+        "map_head": "Obligation & risk map",
+        "map_body": "for each regime in the rubric (EU AI Act, GDPR, US state "
+            "privacy, FTC, liability, cross-border transfer, sector rules, "
+            "disclosure, standards), a bullet in the form `**REGIME** settled this "
+            "window: …; still open: …`. Be specific",
+        "closer_head": "What to flag to counsel",
+        "closer_body": "the highest legal-risk patterns this window surfaces, and "
+            "any safe-harbor or compliance claim the evidence shows is overstated",
+    },
+}
+
+
 def synthesis(args) -> None:
-    """Weekly deep synthesis: reads each paper's full text (web_fetch), then writes
-    a mechanism-level, plain-language briefing framed by the privacy-by-design
+    """Weekly deep synthesis for one lens: reads each item's full text (web_fetch),
+    then writes a mechanism-level, plain-language briefing framed by that lens's
     gap map. Windowed and STATELESS — does not touch the `reported` flag."""
+    lens = getattr(args, "lens", "privacy")
+    cfg = SYNTH_CFG[lens]
+    score = cfg["score"]
     cutoff = (date.today() - timedelta(days=args.days - 1)).isoformat()
     pool = [i for i in newsdb.load_items()
-            if (i.get("pe_score") or 0) >= 2 and i["fetched"] >= cutoff]
+            if (i.get(score) or 0) >= 2 and i["fetched"] >= cutoff]
     if not pool:
-        print(f"No privacy-eng items (pe_score>=2) in the last {args.days} days.")
+        print(f"No {lens} items ({score}>=2) in the last {args.days} days.")
         return
-    pool.sort(key=lambda i: (i["pe_score"], i["importance"]), reverse=True)
+    pool.sort(key=lambda i: (i[score], i["importance"]), reverse=True)
     chosen = pool[:args.max]
     if len(pool) > len(chosen):
-        print(f"synthesis covers the top {len(chosen)} of {len(pool)} pe items; "
+        print(f"{lens} synthesis covers the top {len(chosen)} of {len(pool)} items; "
               f"{len(pool) - len(chosen)} lower-ranked items dropped to bound "
               f"fetch cost (raise with --max).")
 
@@ -701,7 +831,7 @@ def synthesis(args) -> None:
     for i in chosen:
         e = {"title": i["title"], "url": i["url"], "source": i["source"],
              "published": i["published"], "tags": i["tags"],
-             "pe_angle": i["pe_angle"], "summary": i["summary"]}
+             "angle": i.get(cfg["angle"], ""), "summary": i["summary"]}
         ft = _arxiv_fulltext(i["url"])
         if ft:
             e["full_text_url"] = ft
@@ -709,13 +839,12 @@ def synthesis(args) -> None:
 
     client = client_or_die()
     today = date.today().isoformat()
-    system_text = _system(GUARDIAN_RUBRIC)
+    system_text = _system(cfg["rubric"])
     tools = [{"type": "web_fetch_20260209", "name": "web_fetch",
               "max_uses": args.max * 2}]
     prompt = (
-        f"Produce a WEEKLY privacy-engineering SYNTHESIS for {today}, covering the "
-        f"window {cutoff} to {today}. Audience: a privacy engineering MANAGER "
-        "leading a privacy-capabilities team. This is a "
+        f"Produce a WEEKLY {cfg['title'].upper()} for {today}, covering the window "
+        f"{cutoff} to {today}. Audience: {cfg['audience']}. This is a "
         "mechanism-level briefing, not a high-level TL;DR.\n\n"
         "FIRST, use the web_fetch tool to read the actual content behind each item "
         "below. Prefer `full_text_url` when present (arXiv HTML full text); "
@@ -724,24 +853,22 @@ def synthesis(args) -> None:
         "so rather than guessing). Base your analysis on what you actually read; "
         "never invent details you could not fetch.\n\n"
         "THEN write ONLY the markdown document, no preamble:\n"
-        f"- `# Privacy Engineering Synthesis, {today}` (window {cutoff} to {today})\n"
-        "- `## The big picture`: 2-4 short paragraphs on the LONGER-TERM industry "
-        "trends this window reinforces, where things are heading, and the biggest "
-        "unsolved problems.\n"
+        f"- `# {cfg['title']}, {today}` (window {cutoff} to {today})\n"
+        "- `## The big picture`: 2-4 short paragraphs naming the durable trends "
+        "this window reinforces and the biggest unsolved problems, each tied to a "
+        "specific development below. Write plainly and concretely. No thesis "
+        "pronouncements, no pull-quote sentences, no imperative maxims; state what "
+        "happened and what follows from it, not a sweeping theme.\n"
         "- `## Developments explained`: for the most important items, a "
         "`### [Title](url)` subsection with four labeled lines. **Read:** (full "
         "text / abstract only / blocked); **What it is (plain):** explain it for a "
         "smart reader new to this niche, plain vocabulary, no jargon; **How it "
-        "works:** the actual mechanism, at technical depth; **So what for us:** the "
-        "concrete implication for a privacy-capabilities team's roadmap.\n"
-        "- `## Privacy-by-Design gap map`: for each Hoepman strategy and for "
-        "data-subject rights (see the rubric in the system prompt), a bullet in the "
-        "form `**STRATEGY** shipped this window: …; still missing: …`. This is the "
-        "'where we need solutions' section. Be specific about the gaps.\n"
+        "works:** the actual mechanism, at technical depth; **So what for us:** "
+        f"{cfg['sowhat']}.\n"
+        f"- `## {cfg['map_head']}`: {cfg['map_body']}.\n"
         "- `## Trends & where we need solutions`: a short prioritized list of the "
         "durable trends and the unsolved problems the team should invest in.\n"
-        "- `## What The Guardian would veto`: patterns or technologies this "
-        "window's evidence says a privacy team should refuse to adopt, and why.\n\n"
+        f"- `## {cfg['closer_head']}`: {cfg['closer_body']}.\n\n"
         "Write in plain language throughout but keep mechanism-level depth. Use "
         "only URLs present in the items.\n\n"
         f"Items to review (ranked):\n{json.dumps(view, indent=1)}"
@@ -765,15 +892,23 @@ def synthesis(args) -> None:
             continue
         break
     cost = (total_in * PRICE_IN + total_out * PRICE_OUT) / 1e6
-    print(f"[synthesis] {total_in} in / {total_out} out ~ ${cost:.2f}")
+    print(f"[synthesis:{lens}] {total_in} in / {total_out} out ~ ${cost:.2f}")
 
-    md = "".join(b.text for b in resp.content if b.type == "text").strip() + "\n"
+    md = "".join(b.text for b in resp.content if b.type == "text").strip()
+    # Drop any tool-narration preamble the model emitted before the title
+    # (e.g. "I'll fetch each item first.# Security Synthesis, ...").
+    marker = f"# {cfg['title']},"
+    cut = md.find(marker)
+    if cut > 0:
+        md = md[cut:]
+    md = md.rstrip() + "\n"
     REPORTS.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y-%m-%d-%H%M")
-    (REPORTS / f"synthesis-{stamp}.md").write_text(md)
-    (REPORTS / "latest-synthesis.md").write_text(md)
+    tag = lens if cfg["suffix"] else "privacy"
+    (REPORTS / f"synthesis-{tag}-{stamp}.md").write_text(md)
+    (REPORTS / f"latest-synthesis{cfg['suffix']}.md").write_text(md)
     newsdb.build()  # surface the synthesis in the UI's persistent top panel
-    print(f"synthesis -> data/reports/synthesis-{stamp}.md")
+    print(f"{lens} synthesis -> data/reports/synthesis-{tag}-{stamp}.md")
 
 
 def _check_feed(feed: dict, stale_cutoff: datetime) -> dict:
@@ -998,7 +1133,9 @@ def main() -> None:
     ln = sub.add_parser("lens", help="backfill privacy/security/law lenses + subtopics on stored items")
     ln.add_argument("--all", action="store_true", help="re-score every item, not just unscored ones")
     sub.add_parser("report", help="delta report: privacy-eng items new since the last report")
-    sy = sub.add_parser("synthesis", help="weekly deep synthesis: reads each paper, /privacy-review framed")
+    sy = sub.add_parser("synthesis", help="weekly deep synthesis: reads each paper, lens-framed")
+    sy.add_argument("--lens", choices=["privacy", "security", "legal"], default="privacy",
+                    help="which lens to synthesize (default privacy; sec/law are on-demand)")
     sy.add_argument("--days", type=int, default=14, help="window in days (default 14)")
     sy.add_argument("--max", type=int, default=15, help="max items to fetch+synthesize (default 15)")
     au = sub.add_parser("audit-sources", help="pressure-test source coverage: health + gap analysis")
