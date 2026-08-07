@@ -492,10 +492,14 @@
     const ls = lensList();
     const badges = ls.map(k =>
       `<span class="pebadge">${LENSES[k].label.split(" ")[0]} ${i[LENSES[k].score] || 0}/3</span>`).join(" ");
-    const angles = ls.length
-      ? ls.map(k => i[LENSES[k].angle]
-          ? `<div class="peangle"><b>${LENSES[k].note}:</b> ${esc(i[LENSES[k].angle])}</div>` : "").join("")
-      : `<div class="angle">${esc(i.privacy_angle)}</div>`;
+    // With lenses active, show their angles. With none, show every lens that
+    // scores the story (privacy, security, legal alike) so no one lens is
+    // privileged by default; fall back to the general privacy note if none do.
+    const angleKeys = ls.length ? ls
+      : Object.keys(LENSES).filter(k => (i[LENSES[k].score] || 0) >= 2);
+    const angles = angleKeys.map(k => i[LENSES[k].angle]
+        ? `<div class="peangle"><b>${LENSES[k].note}:</b> ${esc(i[LENSES[k].angle])}</div>` : "").join("")
+      || `<div class="angle">${esc(i.privacy_angle)}</div>`;
     const subs = itemSubs(i).map(s => `<span class="subtag ${SUB_DOMAIN[s] || ""}">${s}</span>`).join(" ");
     const nw = isNew(i);
     const dateMeta = (showDate && i.published) ? `<span class="metadate">${esc(i.published)}</span>` : "";
