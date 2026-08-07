@@ -114,8 +114,12 @@
     padding: 16px 18px; margin-bottom: 12px;
   }
   .card-date { font-size: 18px; font-weight: 800; color: var(--ink);
-               letter-spacing: 0.01em; margin-bottom: 4px; }
+               letter-spacing: 0.01em; margin-bottom: 2px; }
   .card-date.unknown { color: var(--muted); font-weight: 600; }
+  .newpill { background: var(--ok); color: var(--bg); border-radius: 999px;
+             padding: 2px 9px; font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+  .added { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .added.isnew { color: var(--ok); font-weight: 600; }
   .card h3 { font-size: 16px; line-height: 1.35; margin-bottom: 4px; }
   .card h3 a { color: var(--ink); text-decoration: none; }
   .card h3 a:hover { color: var(--accent); }
@@ -155,9 +159,8 @@
   <span class="sub" id="stats"></span>
   <div class="tools">
     <span class="freshness" id="freshness"><span class="dot"></span><span></span></span>
+    <span class="newpill" id="newCount" style="display:none"></span>
     <button class="scanbtn" id="scanBtn">↻ Scan now</button>
-    <button class="scanbtn ghost" id="reportBtn"
-      title="Privacy-engineering report of only what's new since your last report, copy-paste ready">📋 Report</button>
   </div>
 </header>
 <section class="synthwrap" id="synthWrap"></section>
@@ -236,6 +239,19 @@
   const activeSubs = new Set();
   const activeLenses = new Set();   // multi-select; AND = cross-cutting stories
   let minImp = 1, query = "", sortMode = "newest";
+
+  // "new since your last visit": per-browser, cookieless, localStorage only.
+  const LAST_SEEN_KEY = "aps_last_seen";
+  const lastSeen = localStorage.getItem(LAST_SEEN_KEY) || "";
+  const isNew = i => !!lastSeen && (i.fetched || "") > lastSeen;
+  function fmtFetched(f) {
+    if (!f) return "";
+    const d = new Date(f);
+    if (isNaN(d)) return f;
+    return d.toLocaleString(undefined, f.includes("T")
+      ? { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }
+      : { month: "short", day: "numeric" });
+  }
   // Action buttons need the local server (scripts/ui.sh). We probe for it; on a
   // static host like the public Cloudflare site there is no server, so the page
   // stays cleanly read-only. `apiUp` flips true once the probe succeeds.
@@ -313,7 +329,6 @@
   // --- report / synthesis modal ---
   const modal = document.getElementById("modal");
   const modalBody = document.getElementById("modalBody");
-  const reportBtn = document.getElementById("reportBtn");
   let lastMarkdown = "";
   const showModal = (title, html) => {
     document.getElementById("modalTitle").textContent = title;
@@ -345,13 +360,9 @@
   }
 
   scanBtn.style.display = "none";
-  reportBtn.style.display = "none";
   fetch("/api/status").then(r => r.ok ? r.json() : Promise.reject()).then(s => {
     apiUp = true;
     scanBtn.style.display = ""; scanBtn.onclick = runScan;
-    reportBtn.style.display = ""; reportBtn.onclick = () => runTask("/api/report",
-      "Privacy report, new since your last report",
-      "Generating the delta report…", reportBtn);
     if (s.running) { scanBtn.disabled = true; scanBtn.classList.add("busy"); scanBtn.textContent = "⟳ Working…"; }
     renderSynth();
   }).catch(() => { /* no local server: read-only site */ });
@@ -436,8 +447,10 @@
           ? `<div class="peangle"><b>${LENSES[k].note}:</b> ${esc(i[LENSES[k].angle])}</div>` : "").join("")
       : `<div class="angle">${esc(i.privacy_angle)}</div>`;
     const subs = itemSubs(i).map(s => `<span class="subtag ${SUB_DOMAIN[s] || ""}">${s}</span>`).join(" ");
+    const nw = isNew(i);
     return `<article class="card">
-      <div class="card-date${i.published ? "" : " unknown"}">${esc(i.published || "date unknown")}</div>
+      <div class="card-date${i.published ? "" : " unknown"}">${esc(i.published || "date unknown")}${nw ? ' <span class="newpill">NEW</span>' : ''}</div>
+      <div class="added${nw ? " isnew" : ""}">${nw ? "new as of " : "added "}${esc(fmtFetched(i.fetched))}</div>
       <h3><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.title)}</a></h3>
       <div class="meta">
         <span class="imp">${"●".repeat(i.importance)}${"○".repeat(5 - i.importance)}</span>
@@ -557,6 +570,14 @@
     pick.style.display = "none";
     document.getElementById("digest").innerHTML = '<p class="empty">No digest yet.</p>';
   }
+  // "N new since your last visit" pill, then mark this visit so the next one
+  // measures against the newest item present now.
+  const newTotal = D.items.filter(isNew).length;
+  const nc = document.getElementById("newCount");
+  if (newTotal > 0) { nc.textContent = newTotal + " new since your last visit"; nc.style.display = ""; }
+  const maxFetched = D.items.reduce((m, i) => (i.fetched || "") > m ? (i.fetched || "") : m, "");
+  if (maxFetched) localStorage.setItem(LAST_SEEN_KEY, maxFetched);
+
   renderFreshness();
   renderSynth();
   render();

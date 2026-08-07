@@ -71,7 +71,7 @@ def ingest(path: str) -> None:
             "url": it["url"].strip(),
             "source": it.get("source", "").strip(),
             "published": it.get("published"),
-            "fetched": date.today().isoformat(),
+            "fetched": datetime.now().isoformat(timespec="minutes"),
             "tags": tags,
             "summary": it.get("summary", "").strip(),
             "privacy_angle": it.get("privacy_angle", "").strip(),
