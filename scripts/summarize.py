@@ -8,21 +8,26 @@ Subcommands (run with the project venv: .venv/bin/python scripts/summarize.py ..
   digest   Have Claude write the daily digest from recently added items to
            data/digests/YYYY-MM-DD.md and rebuild ui/data.js.
   run      triage then digest — the full API pipeline.
+  audit-sources  Pressure-test source coverage: mechanical feed-health check
+           plus a librarian-framed gap analysis (web_search) that proposes new
+           primary sources and flags feeds to repair or cut. Report only.
 
 Auth: set ANTHROPIC_API_KEY in the environment (or use `ant auth login`).
 Model: claude-opus-5 ($5/$25 per MTok). A typical daily run costs a few cents.
 """
 import argparse
+import concurrent.futures as cf
 import json
 import re
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import anthropic
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import newsdb  # noqa: E402  (ingest/build helpers)
+import fetch_feeds  # noqa: E402  (feed fetch/parse helpers for the source audit)
 
 ROOT = Path(__file__).resolve().parent.parent
 MODEL = "claude-opus-5"
@@ -170,6 +175,37 @@ solutions are needed)?
 "Would The Guardian veto it?" = patterns a privacy team should refuse to adopt:
 collecting just-in-case, consent theater, guardrails that can't be enforced,
 agent memory with no deletion path, PII in logs/traces."""
+
+AUDIT_RUBRIC = """\
+You are also a research-methods reviewer and information-science librarian
+auditing this pipeline's SOURCE COVERAGE against its stated question. Judge the
+source set the way a systematic-review methodologist judges a search strategy:
+  - RECALL: are whole classes of primary source missing? (a regulator, a
+    standards body, a CVE/advisory stream, a first-party vendor security blog, a
+    region or language the question implies but the feeds ignore.)
+  - PRECISION: which feeds yield noise, echoes of the same wire story, or
+    nothing usable?
+  - BIAS: over-reliance on one region, language, vendor, or tier; too many
+    secondary outlets reprinting the same primary source.
+  - FRESHNESS: dead or unparsable feeds that need repair or replacement.
+A good source set has an independent PRIMARY source per subtopic, not many
+secondary outlets echoing one wire story. Prefer regulators, standards bodies,
+CVE/advisory feeds, first-party vendor security posts, and researchers who
+publish original findings.
+
+Judgment guards, apply them:
+  - Regulator, standards-body, and release/tag feeds (for example an AI Act or
+    data-protection authority, a protocol's GitHub releases atom) are quiet by
+    nature. Low volume or an old newest-item date is NOT grounds to prune a
+    primary feed. Staleness only condemns a feed that should be active and is
+    not (a security blog gone dark, a 404).
+  - A feed showing zero STORED items is not proof it is useless. Candidates pass
+    a keyword prefilter (an agent term AND a risk term in the title/blurb) and
+    then a Claude triage before they are stored, so a good source can score zero
+    because the prefilter or triage dropped its items. Use the candidate counts,
+    when given, to tell 'produced nothing' apart from 'produced items that later
+    stages cut'. Only recommend cutting a feed when both signals agree and the
+    feed is not a unique primary source."""
 
 # Prose contract applied to every summary, digest, report, and synthesis the
 # tool writes. The requested markdown structure (headings, bulleted items,
@@ -740,6 +776,217 @@ def synthesis(args) -> None:
     print(f"synthesis -> data/reports/synthesis-{stamp}.md")
 
 
+def _check_feed(feed: dict, stale_cutoff: datetime) -> dict:
+    """Fetch one feed and classify its health. Never raises."""
+    name, url = feed["name"], feed.get("url", "")
+    base = {"name": name, "url": url, "tier": feed.get("tier", "?"),
+            "domains": feed.get("domains", [])}
+    try:
+        raw = fetch_feeds.get(url, timeout=20)
+    except Exception as e:
+        return {**base, "status": "error", "count": 0, "newest": None,
+                "detail": f"{type(e).__name__}: {e}"}
+    try:
+        entries = list(fetch_feeds.parse_feed(raw))  # generator; force inside try
+    except Exception as e:
+        return {**base, "status": "unparsable", "count": 0, "newest": None,
+                "detail": f"{type(e).__name__}: {e} (often a block page served 200)"}
+    dates = [d for (_t, _l, d, _b) in entries if d]
+    newest = max(dates) if dates else None
+    if not entries:
+        status = "empty"
+    elif newest is None:
+        status = "no-dates"
+    elif newest < stale_cutoff:
+        status = "stale"
+    else:
+        status = "ok"
+    return {**base, "status": status, "count": len(entries),
+            "newest": newest.date().isoformat() if newest else None, "detail": ""}
+
+
+def feed_health(feeds: list, stale_days: int) -> list:
+    """Concurrent health check across every feed with a URL."""
+    stale_cutoff = datetime.now(timezone.utc) - timedelta(days=stale_days)
+    have = [f for f in feeds if f.get("url")]
+    out = []
+    with cf.ThreadPoolExecutor(max_workers=10) as ex:
+        futs = {ex.submit(_check_feed, f, stale_cutoff): f for f in have}
+        for fut in cf.as_completed(futs):
+            out.append(fut.result())
+    out.sort(key=lambda h: h["name"].lower())
+    return out
+
+
+def _source_yield(dist_days: int) -> tuple:
+    """Per-source signals separating 'produced nothing' from 'later stages cut it'.
+
+    stored: items in the store per source over the last dist_days (by fetched date).
+    cand_now: raw prefilter hits in the CURRENT feed-candidates.json only. This is
+    a point-in-time snapshot from the last fetch (~10 days), and fetch_feeds drops
+    URLs already stored, so it is NOT comparable to stored and cannot be summed
+    with it. Read it only as 'is this feed producing prefilter hits right now'."""
+    def norm(src: str) -> str:
+        return "Hacker News" if src.startswith("Hacker News") else src
+
+    cutoff = (date.today() - timedelta(days=dist_days - 1)).isoformat()
+    stored = {}
+    for i in newsdb.load_items():
+        if (i.get("fetched") or "") >= cutoff:
+            stored[norm(i.get("source", ""))] = stored.get(norm(i.get("source", "")), 0) + 1
+
+    cand = {}
+    cand_file = ROOT / "data" / "feed-candidates.json"
+    if cand_file.exists():
+        try:
+            for c in json.loads(cand_file.read_text()).get("candidates", []):
+                cand[norm(c.get("source", ""))] = cand.get(norm(c.get("source", "")), 0) + 1
+        except Exception:
+            pass
+    return stored, cand
+
+
+def audit_sources(args) -> None:
+    """Pressure-test source coverage: a mechanical feed-health check plus a
+    librarian-framed gap analysis (web_search) that proposes new primary sources
+    and flags feeds to repair or cut. Report only; register edits stay by hand."""
+    reg_file = ROOT / "data" / "sources.json"
+    if not reg_file.exists():
+        sys.exit("No data/sources.json to audit.")
+    reg = json.loads(reg_file.read_text())
+    feeds, apis = reg.get("feeds", []), reg.get("apis", [])
+    methodology = reg.get("methodology", {})
+
+    print(f"checking {len([f for f in feeds if f.get('url')])} feeds ...")
+    health = feed_health(feeds, args.stale_days)
+    by_status = {}
+    for h in health:
+        by_status.setdefault(h["status"], []).append(h["name"])
+    for status in ("error", "unparsable", "empty", "no-dates", "stale", "ok"):
+        names = by_status.get(status, [])
+        if names:
+            print(f"  {status:11} {len(names):>2}: {', '.join(names)}")
+
+    REPORTS.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y-%m-%d-%H%M")
+    today = date.today().isoformat()
+
+    if args.health_only:
+        lines = [f"# Source Health, {today}", ""]
+        for status in ("error", "unparsable", "empty", "no-dates", "stale", "ok"):
+            hs = [h for h in health if h["status"] == status]
+            if not hs:
+                continue
+            lines.append(f"## {status} ({len(hs)})")
+            for h in hs:
+                tail = f" — {h['detail']}" if h["detail"] else \
+                    (f" — newest {h['newest']}" if h["newest"] else "")
+                lines.append(f"- **{h['name']}** ({h['tier']}){tail}")
+            lines.append("")
+        (REPORTS / f"source-audit-{stamp}.md").write_text("\n".join(lines))
+        (REPORTS / "latest-source-audit.md").write_text("\n".join(lines))
+        print(f"source health -> data/reports/source-audit-{stamp}.md")
+        return
+
+    stored, cand = _source_yield(args.dist_days)
+    yield_rows = []
+    for f in feeds:
+        n = f["name"]
+        key = "Hacker News" if n.startswith("Hacker News") else n
+        yield_rows.append({"name": n, "tier": f.get("tier"),
+                           "domains": f.get("domains", []),
+                           "stored_items": stored.get(key, 0),
+                           "cand_now": cand.get(key, 0)})
+
+    payload = {
+        "methodology": {k: methodology.get(k) for k in
+                        ("question", "tiers", "inclusion", "exclusion")},
+        "feeds": [{"name": f["name"], "url": f.get("url"), "tier": f.get("tier"),
+                   "domains": f.get("domains", []), "note": f.get("note", "")}
+                  for f in feeds],
+        "apis": [{"name": a["name"], "tier": a.get("tier"),
+                  "domains": a.get("domains", []), "note": a.get("note", "")}
+                 for a in apis],
+        "feed_health": [{"name": h["name"], "tier": h["tier"],
+                         "status": h["status"], "newest": h["newest"],
+                         "detail": h["detail"]} for h in health],
+        "source_yield": {"stored_window_days": args.dist_days, "rows": yield_rows,
+                         "note": "stored_items = items kept after prefilter + "
+                         "triage over the last stored_window_days. cand_now = raw "
+                         "prefilter hits in the CURRENT candidate snapshot only "
+                         "(~10 days, and it EXCLUDES URLs already stored). The two "
+                         "use different windows and cand_now drops already-stored "
+                         "URLs, so stored_items can exceed cand_now and the two "
+                         "must not be summed or differenced. Use cand_now only as "
+                         "a rough 'is this feed producing hits right now' signal, "
+                         "and stored_items as the real yield."},
+        "subtopic_axes": {"security": SUBTOPICS, "privacy": PE_SUBTOPICS,
+                          "legal": LAW_SUBTOPICS},
+    }
+
+    client = client_or_die()
+    system_text = "\n\n".join([MISSION, PROSE_DIRECTIVE, SUBTOPIC_DEF,
+                               PE_SUBTOPIC_DEF, LAW_SUBTOPIC_DEF, AUDIT_RUBRIC])
+    tools = [{"type": "web_search_20260209", "name": "web_search",
+              "max_uses": args.max_web}]
+    prompt = (
+        f"Audit the source coverage of this pipeline for {today}. You are given "
+        "the methodology, the full feed and API register, a mechanical health "
+        "check, and per-source yield counts. Use web_search to CONFIRM that any "
+        "source you propose exists and to find its real feed URL; do not invent "
+        "URLs or propose a source you could not confirm.\n\n"
+        "Write ONLY the markdown document, no preamble:\n"
+        f"- `# Source Audit, {today}`\n"
+        "- `## Coverage verdict`: 2-3 short paragraphs. Overall recall and "
+        "precision against the question, and the biggest blind spots.\n"
+        "- `## Feed health`: only feeds needing action (error, unparsable, empty, "
+        "or a stale feed that should be active). One bullet each: the name, what "
+        "is wrong, and the fix (repair URL, replace, or leave — noting when a "
+        "quiet primary feed is fine). Skip healthy feeds.\n"
+        "- `## Gaps by subtopic`: walk the security, privacy, and legal subtopic "
+        "axes (in the system prompt). Name the axes that are thinly sourced or "
+        "rely on echoes, and for each say what PRIMARY source would close the "
+        "gap.\n"
+        "- `## Proposed additions`: concrete new sources, each a bullet with the "
+        "name, the confirmed feed URL, a suggested tier and domains, and one "
+        "sentence on the specific gap it closes. Only include sources you "
+        "confirmed by search.\n"
+        "- `## Prune or consolidate`: feeds to repair, merge, or drop, each with "
+        "the reason tied to the health and yield data. Respect the judgment "
+        "guards: never propose cutting a unique primary source on low volume "
+        "alone.\n"
+        "- `## Methodology notes`: weaknesses in the question, tiers, or "
+        "inclusion/exclusion rules, and what to change.\n\n"
+        "Ground every claim in the data below and what you confirm by search.\n\n"
+        f"Register and signals:\n{json.dumps(payload, indent=1)}"
+    )
+    messages = [{"role": "user", "content": prompt}]
+    total_in = total_out = 0
+    resp = None
+    for _ in range(12):  # resume across pause_turn while web_search runs
+        with client.messages.stream(
+            model=MODEL, max_tokens=12000,
+            system=[{"type": "text", "text": system_text,
+                     "cache_control": {"type": "ephemeral"}}],
+            tools=tools, messages=messages,
+        ) as stream:
+            resp = stream.get_final_message()
+        total_in += resp.usage.input_tokens
+        total_out += resp.usage.output_tokens
+        guard_refusal(resp)
+        if resp.stop_reason == "pause_turn":
+            messages.append({"role": "assistant", "content": resp.content})
+            continue
+        break
+    cost = (total_in * PRICE_IN + total_out * PRICE_OUT) / 1e6
+    print(f"[audit-sources] {total_in} in / {total_out} out ~ ${cost:.2f}")
+
+    md = "".join(b.text for b in resp.content if b.type == "text").strip() + "\n"
+    (REPORTS / f"source-audit-{stamp}.md").write_text(md)
+    (REPORTS / "latest-source-audit.md").write_text(md)
+    print(f"source audit -> data/reports/source-audit-{stamp}.md")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -754,6 +1001,15 @@ def main() -> None:
     sy = sub.add_parser("synthesis", help="weekly deep synthesis: reads each paper, /privacy-review framed")
     sy.add_argument("--days", type=int, default=14, help="window in days (default 14)")
     sy.add_argument("--max", type=int, default=15, help="max items to fetch+synthesize (default 15)")
+    au = sub.add_parser("audit-sources", help="pressure-test source coverage: health + gap analysis")
+    au.add_argument("--stale-days", type=int, default=60,
+                    help="flag a feed whose newest item is older than N days (default 60)")
+    au.add_argument("--dist-days", type=int, default=30,
+                    help="window for per-source yield counts (default 30)")
+    au.add_argument("--max-web", type=int, default=25,
+                    help="max web_search uses for the coverage analysis (default 25)")
+    au.add_argument("--health-only", action="store_true",
+                    help="mechanical feed-health check only, no API or web search")
     r = sub.add_parser("run", help="triage then digest")
     r.add_argument("--days", type=int, default=1)
 
@@ -768,6 +1024,8 @@ def main() -> None:
         report(args)
     elif args.cmd == "synthesis":
         synthesis(args)
+    elif args.cmd == "audit-sources":
+        audit_sources(args)
     else:
         args.no_ingest = False
         added = triage(args)

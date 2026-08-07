@@ -24,3 +24,4 @@ ui/data.js
 
 # scratch
 *.tmp
+.wrangler/
