@@ -104,6 +104,9 @@
   .grouphead { font-size: 13px; font-weight: 600; color: var(--accent);
                margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
   .grouphead.sec { color: var(--warn); } .grouphead.law { color: var(--ok); }
+  .grouphead.date { font-size: 19px; color: var(--ink); border-bottom-width: 2px; }
+  .gcount { font-size: 12px; font-weight: 500; color: var(--muted); }
+  .metadate { color: var(--muted); font-weight: 600; }
   .grouphead:first-child { margin-top: 0; }
   input[type=search] {
     border: 1px solid var(--line); background: var(--panel); color: var(--ink);
@@ -176,6 +179,17 @@
           <option value="subtopic">subtopic</option>
         </select>
       </label>
+      <label class="sortlbl">Show
+        <select id="rangeSel">
+          <option value="0">all time</option>
+          <option value="1">last day</option>
+          <option value="3">last 3 days</option>
+          <option value="7">last 7 days</option>
+          <option value="14">last 14 days</option>
+          <option value="30">last 30 days</option>
+          <option value="90">last 90 days</option>
+        </select>
+      </label>
     </div>
     <div class="controls" id="tagControls"></div>
     <div class="controls subrow" id="subControls"></div>
@@ -238,7 +252,7 @@
   const active = new Set();
   const activeSubs = new Set();
   const activeLenses = new Set();   // multi-select; AND = cross-cutting stories
-  let minImp = 1, query = "", sortMode = "newest";
+  let minImp = 1, query = "", sortMode = "newest", dateDays = 0, dateCutoff = "";
 
   // "new since your last visit": per-browser, cookieless, localStorage only.
   const LAST_SEEN_KEY = "aps_last_seen";
@@ -252,6 +266,13 @@
       ? { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }
       : { month: "short", day: "numeric" });
   }
+  function fmtDateHeader(d) {
+    if (!d || d === "undated") return "Undated";
+    const dt = new Date(d.includes("T") ? d : d + "T00:00:00");
+    return isNaN(dt) ? d : dt.toLocaleDateString(undefined,
+      { weekday: "short", month: "long", day: "numeric", year: "numeric" });
+  }
+  function itemDay(i) { return (i.published || i.fetched || "").slice(0, 10); }
   // Action buttons need the local server (scripts/ui.sh). We probe for it; on a
   // static host like the public Cloudflare site there is no server, so the page
   // stays cleanly read-only. `apiUp` flips true once the probe succeeds.
@@ -371,7 +392,6 @@
   const synthWrap = document.getElementById("synthWrap");
   let synthMd = (D.synthesis && D.synthesis.markdown) || "";
   let synthGen = (D.synthesis && D.synthesis.generated) || null;
-  let synthFull = false;
 
   function bigPicture(src) {
     // Title + the "## The big picture" section only; fall back to the whole doc.
@@ -396,17 +416,21 @@
         <div class="synthbody digest"><p class="empty">A deep weekly briefing that reads every paper in full and maps developments to a privacy-by-design gap map. Plain language, mechanism-level, with a "so what" for the capabilities team. Reading the papers takes about a minute or two.</p></div></div>`;
     } else {
       const f = ago(synthGen);
-      const body = synthFull ? synthMd : bigPicture(synthMd);
+      // Panel shows the big-picture summary. "Full synthesis" opens the whole
+      // document in the modal, so the two views are clearly different.
       synthWrap.innerHTML = `<div class="synthpanel"><div class="synthhead">
         <div class="synthtitle">🔬 Weekly Privacy-Engineering Synthesis
           <span class="synthfresh"><span class="dot ${f.cls}"></span>updated ${esc(f.rel)}</span></div>
         <div class="synthctrls">
-          <button class="chip" id="synthToggle">${synthFull ? "Big picture ▴" : "Full synthesis ▾"}</button>
+          <button class="scanbtn ghost" id="synthFullBtn">Read full synthesis</button>
           <button class="chip" id="synthCopy">Copy</button>
           ${apiUp ? '<button class="scanbtn" id="synthUpdate">↻ Update</button>' : ''}
         </div></div>
-        <div class="synthbody digest ${synthFull ? "full" : ""}">${md(body)}</div></div>`;
-      document.getElementById("synthToggle").onclick = () => { synthFull = !synthFull; renderSynth(); };
+        <div class="synthbody digest">${md(bigPicture(synthMd))}</div></div>`;
+      document.getElementById("synthFullBtn").onclick = () => {
+        lastMarkdown = synthMd;
+        showModal("Weekly Privacy-Engineering Synthesis", md(synthMd));
+      };
       document.getElementById("synthCopy").onclick = async () => {
         try { await navigator.clipboard.writeText(synthMd); toast("Copied synthesis markdown.", false); }
         catch { toast("Copy blocked. Select and copy manually.", false); }
@@ -426,7 +450,6 @@
       if (!r.ok || !j.ok) { toast("Synthesis failed: " + (j.error || "see server terminal"), false); renderSynth(); return; }
       synthMd = j.markdown || synthMd;
       synthGen = new Date().toISOString();
-      synthFull = false;
       toast("Synthesis updated.", false);
       renderSynth();
     } catch (e) {
@@ -438,7 +461,7 @@
   const relScore = i => lensList().reduce((s, k) => s + (i[LENSES[k].score] || 0), 0);
   const byRel = (a, b) => (relScore(b) - relScore(a)) || (b.importance - a.importance);
 
-  function cardHTML(i) {
+  function cardHTML(i, showDate) {
     const ls = lensList();
     const badges = ls.map(k =>
       `<span class="pebadge">${LENSES[k].label.split(" ")[0]} ${i[LENSES[k].score] || 0}/3</span>`).join(" ");
@@ -448,15 +471,16 @@
       : `<div class="angle">${esc(i.privacy_angle)}</div>`;
     const subs = itemSubs(i).map(s => `<span class="subtag ${SUB_DOMAIN[s] || ""}">${s}</span>`).join(" ");
     const nw = isNew(i);
+    const dateMeta = (showDate && i.published) ? `<span class="metadate">${esc(i.published)}</span>` : "";
+    const fresh = `<span class="added${nw ? " isnew" : ""}">${nw ? '<span class="newpill">NEW</span> new as of ' : "added "}${esc(fmtFetched(i.fetched))}</span>`;
     return `<article class="card">
-      <div class="card-date${i.published ? "" : " unknown"}">${esc(i.published || "date unknown")}${nw ? ' <span class="newpill">NEW</span>' : ''}</div>
-      <div class="added${nw ? " isnew" : ""}">${nw ? "new as of " : "added "}${esc(fmtFetched(i.fetched))}</div>
       <h3><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.title)}</a></h3>
       <div class="meta">
         <span class="imp">${"●".repeat(i.importance)}${"○".repeat(5 - i.importance)}</span>
-        ${badges}
+        ${badges}${dateMeta}
         <span>${esc(i.source)}</span>
         ${i.tags.map(t => `<span class="tag">${t}</span>`).join("")}
+        ${fresh}
       </div>
       <div>${esc(i.summary)}</div>
       ${angles}
@@ -465,7 +489,8 @@
   }
 
   function passes(i) {
-    return i.importance >= minImp &&
+    return (!dateCutoff || itemDay(i) >= dateCutoff) &&
+      i.importance >= minImp &&
       (!active.size || i.tags.some(t => active.has(t))) &&
       (!activeSubs.size || itemSubs(i).some(t => activeSubs.has(t))) &&
       lensList().every(k => (i[LENSES[k].score] || 0) >= 2) &&
@@ -474,11 +499,14 @@
   }
 
   function render() {
+    dateCutoff = "";
+    if (dateDays) { const c = new Date(); c.setDate(c.getDate() - dateDays); dateCutoff = c.toISOString().slice(0, 10); }
     const items = D.items.filter(passes);
     const anyLens = activeLenses.size > 0;
     const stats = document.getElementById("stats");
     const listEl = document.getElementById("list");
 
+    // grouped by security/privacy/legal subtopic
     if (sortMode === "subtopic") {
       const wanted = activeSubs.size ? ALL_SUBTOPICS.filter(s => activeSubs.has(s)) : ALL_SUBTOPICS;
       const groups = wanted.map(s => ({
@@ -489,20 +517,36 @@
       stats.textContent = `${items.length} stories across ${groups.length} subtopics`;
       listEl.innerHTML = groups.length
         ? groups.map(g => `<h4 class="grouphead ${SUB_DOMAIN[g.s] || ""}">${g.s} (${g.rows.length})</h4>` +
-                          g.rows.map(cardHTML).join("")).join("")
+                          g.rows.map(i => cardHTML(i, true)).join("")).join("")
         : '<div class="empty">No stories match.</div>';
       return;
     }
 
-    if (anyLens) items.sort(byRel);
-    else if (sortMode === "importance") items.sort((a, b) => b.importance - a.importance);
+    // ranked flat list: by lens relevance, or by importance
+    if (anyLens || sortMode === "importance") {
+      if (anyLens) items.sort(byRel);
+      else items.sort((a, b) => b.importance - a.importance);
+      const cross = lensList().map(k => LENSES[k].name).join(" + ");
+      stats.textContent = anyLens
+        ? `${items.length} ${cross} stories${activeLenses.size > 1 ? " (cross-cutting)" : ""}`
+        : `${items.length} of ${D.items.length} stories`;
+      listEl.innerHTML = items.length ? items.map(i => cardHTML(i, true)).join("")
+        : `<div class="empty">No stories${activeLenses.size > 1 ? " at this cross-section" : ""}. Drop a lens or loosen filters.</div>`;
+      return;
+    }
 
-    const cross = lensList().map(k => LENSES[k].name).join(" + ");
-    stats.textContent = anyLens
-      ? `${items.length} ${cross} stories${activeLenses.size > 1 ? " (cross-cutting)" : ""}`
-      : `${items.length} of ${D.items.length} stories`;
-    listEl.innerHTML = items.length ? items.map(cardHTML).join("")
-      : `<div class="empty">No stories${activeLenses.size > 1 ? " at this cross-section" : ""}. Drop a lens or loosen filters.</div>`;
+    // default (newest): grouped under date headers, no repeated per-card date
+    const groups = [], seen = {};
+    for (const i of items) {
+      const d = i.published || "undated";
+      if (!(d in seen)) { seen[d] = []; groups.push([d, seen[d]]); }
+      seen[d].push(i);
+    }
+    stats.textContent = `${items.length} of ${D.items.length} stories`;
+    listEl.innerHTML = items.length
+      ? groups.map(([d, rows]) => `<h4 class="grouphead date">${esc(fmtDateHeader(d))} <span class="gcount">${rows.length}</span></h4>` +
+                                  rows.map(i => cardHTML(i, false)).join("")).join("")
+      : '<div class="empty">No stories in this range. Loosen the filters.</div>';
   }
 
   let refreshDigest = () => {};
@@ -554,6 +598,7 @@
 
   document.getElementById("q").oninput = e => { query = e.target.value.toLowerCase(); render(); };
   document.getElementById("sortSel").onchange = e => { sortMode = e.target.value; render(); };
+  document.getElementById("rangeSel").onchange = e => { dateDays = +e.target.value; render(); };
 
   const pick = document.getElementById("digestPick");
   if (D.digests.length) {
