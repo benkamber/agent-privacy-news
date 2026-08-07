@@ -113,6 +113,9 @@
     background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
     padding: 16px 18px; margin-bottom: 12px;
   }
+  .card-date { font-size: 18px; font-weight: 800; color: var(--ink);
+               letter-spacing: 0.01em; margin-bottom: 4px; }
+  .card-date.unknown { color: var(--muted); font-weight: 600; }
   .card h3 { font-size: 16px; line-height: 1.35; margin-bottom: 4px; }
   .card h3 a { color: var(--ink); text-decoration: none; }
   .card h3 a:hover { color: var(--accent); }
@@ -429,11 +432,12 @@
       : `<div class="angle">${esc(i.privacy_angle)}</div>`;
     const subs = itemSubs(i).map(s => `<span class="subtag ${SUB_DOMAIN[s] || ""}">${s}</span>`).join(" ");
     return `<article class="card">
+      <div class="card-date${i.published ? "" : " unknown"}">${esc(i.published || "date unknown")}</div>
       <h3><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.title)}</a></h3>
       <div class="meta">
         <span class="imp">${"●".repeat(i.importance)}${"○".repeat(5 - i.importance)}</span>
         ${badges}
-        <span>${esc(i.source)}</span><span>${esc(i.published || "date unknown")}</span>
+        <span>${esc(i.source)}</span>
         ${i.tags.map(t => `<span class="tag">${t}</span>`).join("")}
       </div>
       <div>${esc(i.summary)}</div>
