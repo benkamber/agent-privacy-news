@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-FEEDS = [
+_BUILTIN_FEEDS = [
     # agent-security researchers & vendor research teams
     ("Embrace the Red", "https://embracethered.com/blog/index.xml"),
     ("Simon Willison", "https://simonwillison.net/atom/everything/"),
@@ -73,6 +73,22 @@ FEEDS = [
     # academic firehose
     ("arXiv cs.CR", "https://rss.arxiv.org/rss/cs.CR"),
 ]
+
+
+def _load_feeds():
+    """Prefer the source register (data/sources.json); fall back to the built-in list."""
+    reg = ROOT / "data" / "sources.json"
+    try:
+        feeds = [(f["name"], f["url"])
+                 for f in json.loads(reg.read_text()).get("feeds", []) if f.get("url")]
+        if feeds:
+            return feeds
+    except Exception as e:
+        print(f"  sources.json unreadable ({e}); using built-in feed list")
+    return _BUILTIN_FEEDS
+
+
+FEEDS = _load_feeds()
 
 ARXIV_QUERIES = [
     'all:"LLM agent" AND all:"privacy"',

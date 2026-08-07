@@ -1,0 +1,71 @@
+{
+  "methodology": {
+    "question": "What is materially new in privacy, security, and legal/governance developments for agentic AI (agent tools, MCP, agent-to-agent, and the surrounding platform and regulatory landscape)?",
+    "tiers": {
+      "primary": "Original reporting or a primary document: research papers, CVEs and vendor security advisories, regulator and standards-body texts, first-party vendor engineering/security posts, and incident post-mortems. Weighted highest.",
+      "secondary": "Journalism and analysis that reports on primary sources: the security trade press and analyst blogs. Used for discovery and corroboration, not as the sole basis for a claim.",
+      "tertiary": "Aggregators and community surfaces (subreddits, link aggregators, roundups). Used to widen recall and surface items the curated feeds miss; every hit is confirmed against a primary or secondary source before it enters the store."
+    },
+    "inclusion": [
+      "Published within the last ~7 days on a daily run (up to ~30 on a thin day).",
+      "Genuinely about privacy, security, or legal/governance of AGENTIC AI, not generic AI or unrelated infosec.",
+      "Verifiable: the item must trace to a fetchable page, and for the deep synthesis the underlying paper is read in full.",
+      "Deduplicated by URL; a material update to a known story is a new item."
+    ],
+    "exclusion": [
+      "Vendor marketing with no technical or policy substance.",
+      "Stories older than the window on a normal run.",
+      "Paywalled items that cannot be verified."
+    ],
+    "review_cadence": "Sources are pressure-tested with `summarize.py audit-sources`, which flags dead or stale feeds and proposes gaps. Update the register (this file); fetch_feeds.py reads it on the next run."
+  },
+  "feeds": [
+    {"name": "Embrace the Red", "url": "https://embracethered.com/blog/index.xml", "tier": "primary", "domains": ["security"], "note": "Johann Rehberger; leading agent-exfiltration research", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "Simon Willison", "url": "https://simonwillison.net/atom/everything/", "tier": "primary", "domains": ["security", "privacy"], "note": "high-signal agent/LLM security commentary and original tests", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "Schneier on Security", "url": "https://www.schneier.com/feed/atom/", "tier": "primary", "domains": ["security", "privacy", "law"], "note": "security + policy analysis", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "Adversa AI", "url": "https://adversa.ai/feed/", "tier": "secondary", "domains": ["security"], "note": "monthly MCP/agent CVE roundups", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "Trail of Bits", "url": "https://blog.trailofbits.com/feed/", "tier": "primary", "domains": ["security"], "note": "deep technical audits", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "Unit 42 (Palo Alto)", "url": "https://unit42.paloaltonetworks.com/feed/", "tier": "primary", "domains": ["security"], "note": "vendor threat research", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "Wiz Blog", "url": "https://www.wiz.io/feed/rss.xml", "tier": "primary", "domains": ["security"], "note": "cloud/agent security research", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "Snyk Blog", "url": "https://snyk.io/blog/feed/", "tier": "primary", "domains": ["security"], "note": "appsec/supply-chain research and product", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "Securelist (Kaspersky)", "url": "https://securelist.com/feed/", "tier": "primary", "domains": ["security"], "note": "threat research", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "PromptArmor", "url": "https://promptarmor.substack.com/feed", "tier": "primary", "domains": ["security"], "note": "agent connector/data-flow research", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "The Hacker News", "url": "https://feeds.feedburner.com/TheHackersNews", "tier": "secondary", "domains": ["security"], "note": "security press", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "BleepingComputer", "url": "https://www.bleepingcomputer.com/feed/", "tier": "secondary", "domains": ["security"], "note": "security press", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "Help Net Security", "url": "https://www.helpnetsecurity.com/feed/", "tier": "secondary", "domains": ["security"], "note": "security press + product", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "SecurityWeek", "url": "https://www.securityweek.com/feed/", "tier": "secondary", "domains": ["security"], "note": "security press", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "GBHackers", "url": "https://gbhackers.com/feed/", "tier": "secondary", "domains": ["security"], "note": "security press", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "Dark Reading", "url": "https://www.darkreading.com/rss.xml", "tier": "secondary", "domains": ["security"], "note": "security press/analysis", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "The Record", "url": "https://therecord.media/feed/", "tier": "secondary", "domains": ["security", "law"], "note": "security + policy journalism", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "404 Media", "url": "https://www.404media.co/rss/", "tier": "secondary", "domains": ["privacy", "security"], "note": "privacy/tech investigative journalism", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "Risky Business News", "url": "https://risky.biz/rss.xml", "tier": "secondary", "domains": ["security"], "note": "security news digest", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "The Register AI", "url": "https://www.theregister.com/software/ai_ml/headlines.atom", "tier": "secondary", "domains": ["security", "privacy"], "note": "tech press AI desk", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "Ars Technica AI", "url": "https://arstechnica.com/ai/feed/", "tier": "secondary", "domains": ["security", "privacy"], "note": "tech press AI desk", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "EFF Deeplinks", "url": "https://www.eff.org/rss/updates.xml", "tier": "primary", "domains": ["privacy", "law"], "note": "digital-rights advocacy and analysis", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "EDPB News", "url": "https://www.edpb.europa.eu/feed/news_en", "tier": "primary", "domains": ["privacy", "law"], "note": "EU data-protection regulator (primary)", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "EU Digital Strategy", "url": "https://digital-strategy.ec.europa.eu/en/rss.xml", "tier": "primary", "domains": ["law", "privacy"], "note": "EU Commission; AI Act at the source", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "FTC Press", "url": "https://www.ftc.gov/feeds/press-release.xml", "tier": "primary", "domains": ["law", "privacy"], "note": "US enforcement (primary)", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "noyb", "url": "https://noyb.eu/en/rss.xml", "tier": "primary", "domains": ["privacy", "law"], "note": "EU privacy-enforcement advocacy", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "Future of Privacy Forum", "url": "https://fpf.org/feed/", "tier": "primary", "domains": ["privacy", "law"], "note": "privacy think tank", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "IAPP", "url": "https://iapp.org/rss", "tier": "secondary", "domains": ["privacy", "law"], "note": "privacy profession news", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "MCP Blog", "url": "https://blog.modelcontextprotocol.io/index.xml", "tier": "primary", "domains": ["security"], "note": "official MCP announcements", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "MCP spec releases", "url": "https://github.com/modelcontextprotocol/modelcontextprotocol/releases.atom", "tier": "primary", "domains": ["security"], "note": "MCP spec changes at the source", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "A2A releases", "url": "https://github.com/a2aproject/A2A/releases.atom", "tier": "primary", "domains": ["security"], "note": "A2A protocol changes at the source", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "OWASP GenAI", "url": "https://genai.owasp.org/feed/", "tier": "primary", "domains": ["security"], "note": "OWASP LLM/agent security standards", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "Cloud Security Alliance", "url": "https://cloudsecurityalliance.org/blog/feed", "tier": "primary", "domains": ["security", "law"], "note": "cloud/agent security guidance", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "AWS Security Blog", "url": "https://aws.amazon.com/blogs/security/feed/", "tier": "primary", "domains": ["security"], "note": "cloud vendor security (primary)", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "GCP Security Blog", "url": "https://cloudblog.withgoogle.com/products/identity-security/rss/", "tier": "primary", "domains": ["security", "privacy"], "note": "cloud vendor security (primary)", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "OpenAI News", "url": "https://openai.com/news/rss.xml", "tier": "primary", "domains": ["security", "privacy"], "note": "model vendor announcements", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "Import AI", "url": "https://importai.substack.com/feed", "tier": "secondary", "domains": ["security", "law"], "note": "AI policy/research newsletter", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "Latent Space", "url": "https://www.latent.space/feed", "tier": "secondary", "domains": ["security"], "note": "AI engineering newsletter", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "Don't Worry About the Vase", "url": "https://thezvi.substack.com/feed", "tier": "secondary", "domains": ["security", "law"], "note": "AI safety/policy analysis", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "Resilient Cyber", "url": "https://www.resilientcyber.io/feed", "tier": "secondary", "domains": ["security"], "note": "security leadership analysis", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "r/netsec", "url": "https://www.reddit.com/r/netsec/.rss", "tier": "tertiary", "domains": ["security"], "note": "community aggregator", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "Lobsters", "url": "https://lobste.rs/rss", "tier": "tertiary", "domains": ["security"], "note": "community aggregator", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "arXiv cs.CR", "url": "https://rss.arxiv.org/rss/cs.CR", "tier": "primary", "domains": ["security", "privacy"], "note": "academic preprints (keyword-filtered)", "added": "2026-08-04", "last_reviewed": "2026-08-06"}
+  ],
+  "apis": [
+    {"name": "arXiv API", "type": "arxiv", "tier": "primary", "domains": ["security", "privacy"], "note": "targeted queries: LLM-agent privacy, MCP, prompt injection, multi-agent security", "added": "2026-08-04", "last_reviewed": "2026-08-06"},
+    {"name": "Hacker News (Algolia)", "type": "hn", "tier": "tertiary", "domains": ["security"], "note": "points-thresholded story search; catches feedless blogs", "added": "2026-08-04", "last_reviewed": "2026-08-06"}
+  ]
+}
