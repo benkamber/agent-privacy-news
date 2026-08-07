@@ -186,6 +186,11 @@
     </div>
   </aside>
 </main>
+<footer style="max-width:1180px;margin:0 auto;padding:22px 24px 48px;border-top:1px solid var(--line);color:var(--muted);font-size:13px;display:flex;gap:18px;flex-wrap:wrap;align-items:center;">
+  <a href="privacy.html" style="color:var(--accent);text-decoration:none;font-weight:600;">Privacy</a>
+  <a href="https://github.com/benkamber/agent-privacy-news" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600;">Source &amp; methodology</a>
+  <span>Public news, summarized with AI. Cookieless analytics only.</span>
+</footer>
 <div id="toast"></div>
 <div class="modal" id="modal">
   <div class="modalbox">
@@ -556,6 +561,18 @@
   renderSynth();
   render();
 })();
+</script>
+<script>
+  // Cloudflare Web Analytics (cookieless). Paste your Web Analytics token
+  // between the quotes to enable it, then redeploy. Empty = nothing loads.
+  var CF_BEACON_TOKEN = "";
+  if (CF_BEACON_TOKEN) {
+    var b = document.createElement("script");
+    b.defer = true;
+    b.src = "https://static.cloudflareinsights.com/beacon.min.js";
+    b.setAttribute("data-cf-beacon", JSON.stringify({ token: CF_BEACON_TOKEN }));
+    document.head.appendChild(b);
+  }
 </script>
 </body>
 </html>

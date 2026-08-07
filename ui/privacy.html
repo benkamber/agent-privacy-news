@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy · Agent Privacy &amp; Security News</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --ink: #1a1a1a; --muted: #6b6b66;
+    --line: #e4e4df; --accent: #7c5cff; --ok: #2e9e5b; --stale: #cc4b37;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16161a; --panel: #1f1f25; --ink: #ebebe6; --muted: #9a9a94;
+      --line: #2e2e35; --accent: #9d85ff; --ok: #47c479; --stale: #e56a55;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--ink);
+         font: 16px/1.6 -apple-system, "Segoe UI", system-ui, sans-serif; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 40px 24px 80px; }
+  a { color: var(--accent); }
+  .back { font-size: 14px; color: var(--muted); text-decoration: none; }
+  h1 { font-size: 32px; letter-spacing: -0.02em; margin: 18px 0 6px; }
+  .lead { font-size: 18px; color: var(--muted); margin-bottom: 8px; }
+  .updated { font-size: 13px; color: var(--muted); margin-bottom: 32px; }
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 36px; }
+  @media (max-width: 560px) { .cards { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+          padding: 18px 20px; }
+  .card .ic { font-size: 26px; }
+  .card h3 { font-size: 16px; margin: 8px 0 4px; }
+  .card p { font-size: 14px; color: var(--muted); }
+  .card.no h3 { color: var(--stale); }
+  .card.yes h3 { color: var(--ok); }
+  section { margin-bottom: 28px; }
+  section h2 { font-size: 20px; margin-bottom: 8px; }
+  section p { margin-bottom: 10px; }
+  .foot { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line);
+          padding-top: 20px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="./">&larr; Back to the news</a>
+  <h1>Privacy, in plain terms</h1>
+  <p class="lead">This site reads the news to you. It does not read you.</p>
+  <p class="updated">Last updated 6 August 2026</p>
+
+  <div class="cards">
+    <div class="card no"><div class="ic">🚫</div><h3>No accounts</h3>
+      <p>No sign-up, no login, no forms. There is nothing here that asks for your details.</p></div>
+    <div class="card no"><div class="ic">🍪</div><h3>No cookies from us</h3>
+      <p>We set no cookies and use no advertising or cross-site trackers.</p></div>
+    <div class="card no"><div class="ic">🛑</div><h3>No selling data</h3>
+      <p>We collect no personal data, so there is nothing to sell, share, or hand to a broker.</p></div>
+    <div class="card no"><div class="ic">👣</div><h3>No following you</h3>
+      <p>We do not build a profile of you or track you across other sites.</p></div>
+  </div>
+
+  <section>
+    <h2>What is measured</h2>
+    <p>To understand whether the site is useful, it uses <a href="https://www.cloudflare.com/web-analytics/" target="_blank" rel="noopener">Cloudflare Web Analytics</a>, a cookieless tool. It reports aggregate numbers: how many visits, roughly which countries (from the network, not a precise location), which sites linked here, which pages get read, and how long a page is open.</p>
+    <p>None of that identifies you. There is no cookie, no device fingerprint, and no way to single out one person. It answers "is this worth reading" without watching who is reading.</p>
+  </section>
+
+  <section>
+    <h2>Hosting</h2>
+    <p>The site runs on Cloudflare Pages. As the host, Cloudflare processes standard request information such as your IP address to deliver and protect the page, under its own <a href="https://www.cloudflare.com/privacypolicy/" target="_blank" rel="noopener">privacy policy</a>. That is the normal cost of loading any web page and is not shared with us in a form that identifies you.</p>
+  </section>
+
+  <section>
+    <h2>The content</h2>
+    <p>Everything shown here is public news about privacy and security in agentic AI, gathered from public sources. Summaries and analysis are written with an AI model. Every card links to the original source; read those for the full story and their terms.</p>
+  </section>
+
+  <section>
+    <h2>Your rights</h2>
+    <p>We hold no personal data about you. There is nothing to export, correct, or delete, because none of it exists. If that ever changes, this page changes first.</p>
+  </section>
+
+  <p class="foot">Questions about this page or the project: it is open source at
+    <a href="https://github.com/benkamber/agent-privacy-news" target="_blank" rel="noopener">github.com/benkamber/agent-privacy-news</a>.</p>
+</div>
+</body>
+</html>
