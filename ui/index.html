@@ -519,11 +519,23 @@
     </article>`;
   }
 
+  // Subtopic filter: OR within a domain, AND across domains. Selecting two
+  // privacy tags matches either; adding a security tag also requires a security
+  // match. So mixing domains narrows (like the cross-cutting lenses), while
+  // stacking same-domain tags broadens within that domain.
+  function passesSubs(i) {
+    if (!activeSubs.size) return true;
+    const byDom = {};
+    for (const s of activeSubs) (byDom[SUB_DOMAIN[s] || "?"] ||= []).push(s);
+    const has = new Set(itemSubs(i));
+    return Object.values(byDom).every(sel => sel.some(s => has.has(s)));
+  }
+
   function passes(i) {
     return (!dateCutoff || itemDay(i) >= dateCutoff) &&
       i.importance >= minImp &&
       (!active.size || i.tags.some(t => active.has(t))) &&
-      (!activeSubs.size || itemSubs(i).some(t => activeSubs.has(t))) &&
+      passesSubs(i) &&
       lensList().every(k => (i[LENSES[k].score] || 0) >= 2) &&
       (!query || (i.title + i.summary + i.source + (i.pe_angle || "") +
                   (i.sec_angle || "") + (i.law_angle || "")).toLowerCase().includes(query));
@@ -559,7 +571,7 @@
       else items.sort((a, b) => b.importance - a.importance);
       const cross = lensList().map(k => LENSES[k].name).join(" + ");
       stats.textContent = anyLens
-        ? `${items.length} ${cross} stories${activeLenses.size > 1 ? " (cross-cutting)" : ""}`
+        ? `${items.length} of ${D.items.length} · ${cross}${activeLenses.size > 1 ? " (cross-cutting)" : ""}`
         : `${items.length} of ${D.items.length} stories`;
       listEl.innerHTML = items.length ? items.map(i => cardHTML(i, true)).join("")
         : `<div class="empty">No stories${activeLenses.size > 1 ? " at this cross-section" : ""}. Drop a lens or loosen filters.</div>`;
